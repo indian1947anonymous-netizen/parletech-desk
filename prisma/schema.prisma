@@ -1,0 +1,716 @@
+// ParleTech Desk — Prisma Schema
+// PostgreSQL database with full IT help desk models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  AGENT
+  END_USER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  WAITING_FOR_THIRD_PARTY
+  ON_HOLD
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CommentType {
+  PUBLIC_REPLY
+  INTERNAL_NOTE
+}
+
+enum AssetStatus {
+  ACTIVE
+  IN_REPAIR
+  RETIRED
+  LOST
+  SPARE
+}
+
+enum AssetType {
+  LAPTOP
+  DESKTOP
+  PHONE
+  MONITOR
+  TABLET
+  PRINTER
+  SERVER
+  NETWORK
+  PERIPHERAL
+  OTHER
+}
+
+enum WorkflowStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ArticleVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum AutomationTrigger {
+  TICKET_CREATED
+  TICKET_UPDATED
+  TICKET_ASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  SLA_BREACH_WARNING
+  SLA_BREACHED
+  REPLY_RECEIVED
+  TIME_ELAPSED
+}
+
+enum AutomationAction {
+  ASSIGN_AGENT
+  ASSIGN_DEPARTMENT
+  CHANGE_STATUS
+  CHANGE_PRIORITY
+  SEND_EMAIL
+  ADD_TAG
+  ESCALATE
+}
+
+// ============================================================
+// CORE USERS & AUTH
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          UserRole  @default(END_USER)
+  isActive      Boolean   @default(true)
+  jobTitle      String?
+  department    String?
+  phone         String?
+  timezone      String    @default("UTC")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // App relations
+  agentProfile       Agent?
+  submittedTickets   Ticket[]          @relation("TicketRequester")
+  assignedTickets    Ticket[]          @relation("TicketAgent")
+  comments           TicketComment[]
+  activities         TicketActivity[]
+  notifications      Notification[]
+  assetAssignments   AssetAssignment[]
+  licenseAssignments LicenseAssignment[]
+  auditLogs          AuditLog[]
+  onboardingWorkflows  OnboardingWorkflow[] @relation("OnboardingEmployee")
+  offboardingWorkflows OffboardingWorkflow[] @relation("OffboardingEmployee")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================
+// DEPARTMENTS & AGENTS
+// ============================================================
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  email       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agents  Agent[]
+  tickets Ticket[]
+  slas    SlaPolicy[]
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  departmentId String?
+  isAvailable  Boolean  @default(true)
+  maxTickets   Int      @default(20)
+  signature    String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@index([departmentId])
+}
+
+// ============================================================
+// CUSTOMERS & CONTACTS
+// ============================================================
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  phone       String?
+  company     String?
+  jobTitle    String?
+  department  String?
+  address     String?
+  notes       String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@index([email])
+  @@index([company])
+}
+
+// ============================================================
+// TICKETS
+// ============================================================
+
+model Ticket {
+  id           String         @id @default(cuid())
+  ticketNumber String         @unique
+  subject      String
+  description  String         @db.Text
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(MEDIUM)
+  category     String?
+  subcategory  String?
+  tags         String[]       @default([])
+
+  requesterId  String?
+  customerId   String?
+  agentId      String?
+  departmentId String?
+
+  // SLA tracking
+  slaPolicyId      String?
+  slaResponseDue   DateTime?
+  slaResolutionDue DateTime?
+  slaBreached      Boolean   @default(false)
+  firstResponseAt  DateTime?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+
+  // Metadata
+  source    String   @default("WEB")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requester  User?       @relation("TicketRequester", fields: [requesterId], references: [id])
+  customer   Customer?   @relation(fields: [customerId], references: [id])
+  agent      User?       @relation("TicketAgent", fields: [agentId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  slaPolicy  SlaPolicy?  @relation(fields: [slaPolicyId], references: [id])
+
+  comments    TicketComment[]
+  attachments TicketAttachment[]
+  activities  TicketActivity[]
+  relatedTo   RelatedTicket[]    @relation("TicketRelatedTo")
+  relatedFrom RelatedTicket[]    @relation("TicketRelatedFrom")
+
+  @@index([status])
+  @@index([priority])
+  @@index([agentId])
+  @@index([departmentId])
+  @@index([createdAt])
+  @@index([ticketNumber])
+}
+
+model RelatedTicket {
+  id            String @id @default(cuid())
+  ticketId      String
+  relatedTicketId String
+
+  ticket        Ticket @relation("TicketRelatedTo", fields: [ticketId], references: [id], onDelete: Cascade)
+  relatedTicket Ticket @relation("TicketRelatedFrom", fields: [relatedTicketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, relatedTicketId])
+}
+
+model TicketComment {
+  id         String      @id @default(cuid())
+  ticketId   String
+  authorId   String
+  content    String      @db.Text
+  type       CommentType @default(PUBLIC_REPLY)
+  isEdited   Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User               @relation(fields: [authorId], references: [id])
+  attachments TicketAttachment[]
+
+  @@index([ticketId])
+  @@index([authorId])
+}
+
+model TicketAttachment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  commentId String?
+  fileName  String
+  fileSize  Int
+  mimeType  String
+  filePath  String
+  createdAt DateTime @default(now())
+
+  ticket  Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  comment TicketComment? @relation(fields: [commentId], references: [id])
+
+  @@index([ticketId])
+}
+
+model TicketActivity {
+  id          String   @id @default(cuid())
+  ticketId    String
+  userId      String
+  action      String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  filters   Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// ============================================================
+// SLA
+// ============================================================
+
+model SlaPolicy {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String?
+  departmentId        String?
+  priority            TicketPriority?
+  responseTimeHours   Float
+  resolutionTimeHours Float
+  isDefault           Boolean  @default(false)
+  businessHoursOnly   Boolean  @default(true)
+  escalateAt          Float?   // hours before breach to escalate
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  tickets    Ticket[]
+}
+
+// ============================================================
+// AUTOMATION
+// ============================================================
+
+model AutomationRule {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  trigger     AutomationTrigger
+  conditions  Json              // Array of condition objects
+  actions     Json              // Array of action objects
+  isActive    Boolean           @default(true)
+  runOrder    Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  executions AutomationExecution[]
+
+  @@index([trigger])
+  @@index([isActive])
+}
+
+model AutomationExecution {
+  id        String   @id @default(cuid())
+  ruleId    String
+  ticketId  String?
+  status    String   // SUCCESS, FAILED, SKIPPED
+  result    Json?
+  createdAt DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+}
+
+// ============================================================
+// KNOWLEDGE BASE
+// ============================================================
+
+model KbCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String?
+  parentId    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   KbCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children KbCategory[] @relation("CategoryParent")
+  articles KbArticle[]
+}
+
+model KbArticle {
+  id          String            @id @default(cuid())
+  categoryId  String?
+  authorId    String
+  title       String
+  slug        String            @unique
+  content     String            @db.Text
+  excerpt     String?
+  status      ArticleStatus     @default(DRAFT)
+  visibility  ArticleVisibility @default(PUBLIC)
+  views       Int               @default(0)
+  helpful     Int               @default(0)
+  notHelpful  Int               @default(0)
+  tags        String[]          @default([])
+  publishedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  category KbCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([slug])
+}
+
+// ============================================================
+// IT ASSETS
+// ============================================================
+
+model Asset {
+  id            String      @id @default(cuid())
+  assetTag      String      @unique
+  name          String
+  type          AssetType
+  manufacturer  String?
+  model         String?
+  serialNumber  String?
+  status        AssetStatus @default(ACTIVE)
+  location      String?
+  purchaseDate  DateTime?
+  purchasePrice Float?
+  warrantyUntil DateTime?
+  vendor        String?
+  invoiceNumber String?
+  notes         String?     @db.Text
+  specs         Json?       // OS, RAM, CPU, etc.
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  assignments AssetAssignment[]
+  repairs     AssetRepair[]
+
+  @@index([type])
+  @@index([status])
+  @@index([assetTag])
+}
+
+model AssetAssignment {
+  id         String    @id @default(cuid())
+  assetId    String
+  userId     String
+  assignedAt DateTime  @default(now())
+  returnedAt DateTime?
+  notes      String?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([assetId])
+  @@index([userId])
+}
+
+model AssetRepair {
+  id          String    @id @default(cuid())
+  assetId     String
+  description String
+  vendor      String?
+  cost        Float?
+  startDate   DateTime
+  endDate     DateTime?
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+}
+
+// ============================================================
+// SOFTWARE LICENSES
+// ============================================================
+
+model SoftwareLicense {
+  id             String    @id @default(cuid())
+  productName    String
+  vendor         String?
+  licenseType    String
+  totalSeats     Int
+  purchaseDate   DateTime?
+  expirationDate DateTime?
+  licenseKey     String?
+  cost           Float?
+  notes          String?   @db.Text
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  assignments LicenseAssignment[]
+
+  @@index([productName])
+  @@index([expirationDate])
+}
+
+model LicenseAssignment {
+  id         String    @id @default(cuid())
+  licenseId  String
+  userId     String
+  assignedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  notes      String?
+
+  license SoftwareLicense @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id])
+
+  @@index([licenseId])
+  @@index([userId])
+}
+
+// ============================================================
+// ONBOARDING / OFFBOARDING
+// ============================================================
+
+model OnboardingWorkflow {
+  id           String         @id @default(cuid())
+  employeeId   String
+  templateName String
+  status       WorkflowStatus @default(PENDING)
+  startDate    DateTime
+  dueDate      DateTime?
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  employee User               @relation("OnboardingEmployee", fields: [employeeId], references: [id])
+  tasks    OnboardingTask[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model OnboardingTask {
+  id          String         @id @default(cuid())
+  workflowId  String
+  title       String
+  description String?
+  assignedTo  String?
+  status      TaskStatus     @default(PENDING)
+  dueDate     DateTime?
+  completedAt DateTime?
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  workflow OnboardingWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+}
+
+model OffboardingWorkflow {
+  id           String         @id @default(cuid())
+  employeeId   String
+  templateName String
+  status       WorkflowStatus @default(PENDING)
+  startDate    DateTime
+  dueDate      DateTime?
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  employee User               @relation("OffboardingEmployee", fields: [employeeId], references: [id])
+  tasks    OffboardingTask[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model OffboardingTask {
+  id          String              @id @default(cuid())
+  workflowId  String
+  title       String
+  description String?
+  assignedTo  String?
+  status      TaskStatus          @default(PENDING)
+  dueDate     DateTime?
+  completedAt DateTime?
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workflow OffboardingWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   // ticket, system, sla, etc.
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ============================================================
+// AUDIT LOGS
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  group     String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
+}
