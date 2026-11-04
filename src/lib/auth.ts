@@ -72,6 +72,8 @@ if (googleClientId && googleClientSecret) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
+  secret: process.env.AUTH_SECRET || 'parletech-desk-secret-key-change-in-production-abc123',
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
   pages: {

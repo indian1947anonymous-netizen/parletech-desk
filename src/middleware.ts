@@ -25,14 +25,17 @@ export async function middleware(request: NextRequest) {
   const session = await auth()
 
   if (!session?.user) {
-    const loginUrl = new URL('/login', request.url)
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/login'
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
   // Root redirect to dashboard
   if (pathname === '/') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    const dashUrl = request.nextUrl.clone()
+    dashUrl.pathname = '/dashboard'
+    return NextResponse.redirect(dashUrl)
   }
 
   return NextResponse.next()
