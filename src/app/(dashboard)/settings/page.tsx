@@ -2,8 +2,8 @@ import { prisma } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Settings, Shield, Sliders, Bell, Mail, Clock, Database } from 'lucide-react'
+import { EmailIntegration } from '@/components/settings/email-integration'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'System Settings' }
@@ -25,11 +25,14 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Settings & Governance</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Configure SLA policies, workflow automation rules, and company defaults
+          Configure inbound Gmail sync, SLA policies, and automated workflows
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Email & Gmail-to-Ticket Integration */}
+        <EmailIntegration />
+
         {/* SLA Policies Card */}
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="border-b border-slate-100 pb-4">
