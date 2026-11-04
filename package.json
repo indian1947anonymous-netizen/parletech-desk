@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "AUTH_TRUST_HOST=true AUTH_URL=https://parletech-desk.onrender.com NEXTAUTH_URL=https://parletech-desk.onrender.com next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

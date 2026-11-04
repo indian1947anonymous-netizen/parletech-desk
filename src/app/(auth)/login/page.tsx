@@ -43,13 +43,28 @@ function GoogleIcon() {
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const rawCallback = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = (rawCallback.includes('localhost') || rawCallback.includes('10000') || rawCallback === '/')
+    ? '/dashboard'
+    : rawCallback
+
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null)
   const [showGoogleModal, setShowGoogleModal] = useState(false)
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    if (errorParam === 'CredentialsSignin') {
+      setError('Invalid email or password. Please try again.')
+    } else if (errorParam === 'Configuration') {
+      setError('Session refreshed. Please sign in with your credentials.')
+    } else if (errorParam) {
+      setError(`Sign-in error: ${errorParam}`)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     fetch('/api/auth/google/status')
@@ -74,8 +89,7 @@ function LoginForm() {
       if (result?.error) {
         setError('Invalid email or password. Please try again.')
       } else {
-        router.push(callbackUrl)
-        router.refresh()
+        window.location.href = callbackUrl
       }
     } catch {
       setError('An unexpected error occurred. Please try again.')

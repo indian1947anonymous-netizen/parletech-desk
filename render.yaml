@@ -14,6 +14,12 @@ services:
         generateValue: true
       - key: AUTH_TRUST_HOST
         value: "true"
+      - key: AUTH_URL
+        value: https://parletech-desk.onrender.com
+      - key: NEXTAUTH_URL
+        value: https://parletech-desk.onrender.com
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://parletech-desk.onrender.com
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

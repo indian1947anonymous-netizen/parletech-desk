@@ -6,6 +6,17 @@ import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
+// Ensure canonical URL is set in production/Render so redirects never point to internal container localhost
+if (!process.env.AUTH_URL && process.env.NODE_ENV === 'production') {
+  process.env.AUTH_URL = process.env.RENDER_EXTERNAL_URL || 'https://parletech-desk.onrender.com'
+}
+if (!process.env.NEXTAUTH_URL && process.env.AUTH_URL) {
+  process.env.NEXTAUTH_URL = process.env.AUTH_URL
+}
+if (!process.env.AUTH_TRUST_HOST) {
+  process.env.AUTH_TRUST_HOST = 'true'
+}
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -82,6 +93,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   providers,
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const publicOrigin = process.env.AUTH_URL || process.env.NEXTAUTH_URL || 'https://parletech-desk.onrender.com'
+      if (url.startsWith('/')) {
+        return `${publicOrigin}${url}`
+      }
+      if (url.startsWith(publicOrigin)) {
+        return url
+      }
+      if (url.includes('localhost') || url.includes('10000')) {
+        return `${publicOrigin}/dashboard`
+      }
+      return `${publicOrigin}/dashboard`
+    },
     async signIn({ user, account }) {
       if (account?.provider === 'google' && user.email) {
         const email = user.email.toLowerCase()

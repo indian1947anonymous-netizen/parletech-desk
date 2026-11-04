@@ -21,21 +21,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Determine public origin to prevent any reverse proxy localhost redirects
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+  const host = forwardedHost || request.headers.get('host') || ''
+  const isProd = process.env.NODE_ENV === 'production'
+  const origin = (isProd && (host.includes('localhost') || host.includes('10000') || !host))
+    ? (process.env.AUTH_URL || 'https://parletech-desk.onrender.com')
+    : (host ? `${forwardedProto}://${host}` : (process.env.AUTH_URL || 'http://localhost:3000'))
+
   // Check auth for protected routes
   const session = await auth()
 
   if (!session?.user) {
-    const loginUrl = request.nextUrl.clone()
-    loginUrl.pathname = '/login'
+    const loginUrl = new URL('/login', origin)
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
   // Root redirect to dashboard
   if (pathname === '/') {
-    const dashUrl = request.nextUrl.clone()
-    dashUrl.pathname = '/dashboard'
-    return NextResponse.redirect(dashUrl)
+    return NextResponse.redirect(new URL('/dashboard', origin))
   }
 
   return NextResponse.next()
