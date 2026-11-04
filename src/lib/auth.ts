@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
+import Google from 'next-auth/providers/google'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
@@ -10,6 +11,66 @@ const loginSchema = z.object({
   password: z.string().min(6),
 })
 
+const googleClientId = process.env.AUTH_GOOGLE_ID || process.env.GOOGLE_CLIENT_ID || ''
+const googleClientSecret = process.env.AUTH_GOOGLE_SECRET || process.env.GOOGLE_CLIENT_SECRET || ''
+
+const providers: any[] = [
+  Credentials({
+    name: 'credentials',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      const parsed = loginSchema.safeParse(credentials)
+      if (!parsed.success) return null
+
+      const { email, password } = parsed.data
+
+      const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          password: true,
+          role: true,
+          image: true,
+          isActive: true,
+          jobTitle: true,
+          department: true,
+        },
+      })
+
+      if (!user || !user.password || !user.isActive) return null
+
+      const isValid = await bcrypt.compare(password, user.password)
+      if (!isValid) return null
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        image: user.image,
+        jobTitle: user.jobTitle,
+        department: user.department,
+      }
+    },
+  }),
+]
+
+// Add Google OAuth provider if credentials configured
+if (googleClientId && googleClientSecret) {
+  providers.push(
+    Google({
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      allowDangerousEmailAccountLinking: true,
+    })
+  )
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
@@ -17,58 +78,48 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: '/login',
     error: '/login',
   },
-  providers: [
-    Credentials({
-      name: 'credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        const parsed = loginSchema.safeParse(credentials)
-        if (!parsed.success) return null
-
-        const { email, password } = parsed.data
-
-        const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            password: true,
-            role: true,
-            image: true,
-            isActive: true,
-            jobTitle: true,
-            department: true,
-          },
-        })
-
-        if (!user || !user.password || !user.isActive) return null
-
-        const isValid = await bcrypt.compare(password, user.password)
-        if (!isValid) return null
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          image: user.image,
-          jobTitle: user.jobTitle,
-          department: user.department,
-        }
-      },
-    }),
-  ],
+  providers,
   callbacks: {
+    async signIn({ user, account }) {
+      if (account?.provider === 'google' && user.email) {
+        const email = user.email.toLowerCase()
+        const existing = await prisma.user.findUnique({ where: { email } })
+        if (!existing) {
+          const created = await prisma.user.create({
+            data: {
+              email,
+              name: user.name || email.split('@')[0],
+              image: user.image,
+              role: 'END_USER',
+              isActive: true,
+            },
+          })
+          ;(user as any).id = created.id
+          ;(user as any).role = created.role
+        } else {
+          ;(user as any).id = existing.id
+          ;(user as any).role = existing.role
+          ;(user as any).jobTitle = existing.jobTitle
+          ;(user as any).department = existing.department
+        }
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        token.role = (user as any).role
+        token.role = (user as any).role || 'END_USER'
         token.jobTitle = (user as any).jobTitle
         token.department = (user as any).department
+      }
+      if (!token.role && token.email) {
+        const dbUser = await prisma.user.findUnique({ where: { email: token.email.toLowerCase() } })
+        if (dbUser) {
+          token.id = dbUser.id
+          token.role = dbUser.role
+          token.jobTitle = dbUser.jobTitle
+          token.department = dbUser.department
+        }
       }
       return token
     },
