@@ -27,7 +27,7 @@ const navItems = [
   { label: 'Customers', href: '/customers', icon: Users, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Agents', href: '/agents', icon: UserCheck, roles: ['ADMIN', 'MANAGER'] },
   { label: 'Departments', href: '/departments', icon: Building2, roles: ['ADMIN', 'MANAGER'] },
-  { label: 'Email Channels', href: '/settings/channels/email', icon: Mail, roles: ['ADMIN', 'MANAGER'] },
+  { label: 'Email & Outbox', href: '/settings/channels/email', icon: Mail, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Assets', href: '/assets', icon: Monitor, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Licenses', href: '/licenses', icon: Key, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Onboarding', href: '/onboarding', icon: ClipboardList, roles: ['ADMIN', 'MANAGER'] },

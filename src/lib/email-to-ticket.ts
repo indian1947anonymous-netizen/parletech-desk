@@ -106,6 +106,23 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
           },
         })
 
+        // Log inbound email into EmailLog
+        await prisma.emailLog.create({
+          data: {
+            direction: 'INBOUND',
+            from: rawFrom,
+            to: recipientTo || 'support@parletech.com',
+            subject,
+            body: bodyContent,
+            htmlBody: email.html,
+            ticketId: existingTicket.id,
+            ticketNumber: existingTicket.ticketNumber,
+            messageId: email.messageId,
+            inReplyTo: email.inReplyTo,
+            status: 'DELIVERED',
+          },
+        }).catch(console.error)
+
         return {
           success: true,
           action: 'REPLY_ADDED',
@@ -192,6 +209,23 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       },
     })
 
+    // Log inbound email into EmailLog
+    await prisma.emailLog.create({
+      data: {
+        direction: 'INBOUND',
+        from: rawFrom,
+        to: recipientTo || 'support@parletech.com',
+        subject,
+        body: bodyContent,
+        htmlBody: email.html,
+        ticketId: ticket.id,
+        ticketNumber,
+        messageId: email.messageId,
+        inReplyTo: email.inReplyTo,
+        status: 'DELIVERED',
+      },
+    }).catch(console.error)
+
     // Send auto-acknowledgement email
     try {
       const emailContent = ticketCreatedEmail({
@@ -202,6 +236,9 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       })
       await sendEmail({
         to: senderEmail,
+        ticketId: ticket.id,
+        ticketNumber,
+        direction: 'OUTBOUND',
         ...emailContent,
       })
     } catch (mailErr) {

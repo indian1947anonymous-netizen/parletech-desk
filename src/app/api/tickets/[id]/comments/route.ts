@@ -29,7 +29,9 @@ export async function POST(
     const ticket = await prisma.ticket.findUnique({
       where: { id },
       include: {
-        requester: { select: { name: true, email: true } },
+        requester: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, email: true } },
+        department: { select: { id: true, name: true, email: true } },
       },
     })
     if (!ticket) return NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
@@ -66,17 +68,34 @@ export async function POST(
       },
     })
 
-    // Email notification if public reply
-    if (data.type === 'PUBLIC_REPLY' && ticket.requester?.email && session.user.id !== ticket.requesterId) {
+    // Email notification if public reply (Zoho Desk agent email dispatch)
+    const recipientEmail = ticket.customer?.email || ticket.requester?.email
+    const recipientName = ticket.customer?.name || ticket.requester?.name || 'Customer'
+    const agentName = session.user.name || 'Support Agent'
+    const agentEmail = session.user.email || 'support@parletech.com'
+
+    if (data.type === 'PUBLIC_REPLY' && recipientEmail && session.user.id !== ticket.requesterId) {
       const email = newReplyEmail({
         ticketNumber: ticket.ticketNumber,
         subject: ticket.subject,
-        agentName: session.user.name || 'Support Team',
-        replyPreview: data.content.slice(0, 200),
-        requesterName: ticket.requester.name || 'User',
+        agentName,
+        replyPreview: data.content,
+        requesterName: recipientName,
         appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
       })
-      sendEmail({ to: ticket.requester.email, ...email }).catch(console.error)
+      sendEmail({
+        to: recipientEmail,
+        from: `"${agentName} (ParleTech Desk)" <${agentEmail}>`,
+        replyTo: ticket.department?.email || 'support@parletech.com',
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        agentName,
+        agentEmail,
+        direction: 'OUTBOUND',
+      }).catch(console.error)
     }
 
     // App notification for user
@@ -85,7 +104,7 @@ export async function POST(
         data: {
           userId: ticket.requesterId,
           title: `Reply on ${ticket.ticketNumber}`,
-          message: `${session.user.name || 'Agent'} replied to "${ticket.subject}"`,
+          message: `${agentName} replied to "${ticket.subject}"`,
           type: 'ticket',
           link: `/tickets/${id}`,
         },

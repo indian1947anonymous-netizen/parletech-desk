@@ -290,6 +290,7 @@ model Ticket {
   comments    TicketComment[]
   attachments TicketAttachment[]
   activities  TicketActivity[]
+  emailLogs   EmailLog[]
   relatedTo   RelatedTicket[]    @relation("TicketRelatedTo")
   relatedFrom RelatedTicket[]    @relation("TicketRelatedFrom")
 
@@ -741,3 +742,41 @@ model SupportEmail {
   @@index([departmentId])
   @@index([email])
 }
+
+// ============================================================
+// EMAIL LOGS (INBOUND & OUTBOUND AUDIT TRAIL)
+// ============================================================
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model EmailLog {
+  id           String         @id @default(cuid())
+  direction    EmailDirection
+  from         String
+  to           String
+  replyTo      String?
+  subject      String
+  body         String         @db.Text
+  htmlBody     String?        @db.Text
+  ticketId     String?
+  ticketNumber String?
+  agentName    String?
+  agentEmail   String?
+  status       String         @default("DELIVERED") // DELIVERED, PENDING, FAILED
+  error        String?
+  messageId    String?
+  inReplyTo    String?
+  createdAt    DateTime       @default(now())
+
+  ticket       Ticket?        @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([direction])
+  @@index([ticketId])
+  @@index([createdAt])
+  @@index([from])
+  @@index([to])
+}
+

@@ -40,6 +40,16 @@ export function Header({ user, notificationCount = 0 }: HeaderProps) {
       </form>
 
       <div className="ml-auto flex items-center gap-3">
+        {user.role !== 'END_USER' && (
+          <a
+            href="/settings/channels/email"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors border border-blue-200"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Email Simulator & Outbox
+          </a>
+        )}
+
         <a href="/notifications" className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors">
           <Bell className="h-4 w-4 text-slate-600" />
           {notificationCount > 0 && (

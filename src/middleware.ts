@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // Routes that don't require authentication
-const publicRoutes = ['/login', '/register', '/api/auth']
+const publicRoutes = ['/login', '/register', '/api/auth', '/api/email']
 
 // Routes that require auth
 const protectedRoutes = ['/dashboard', '/tickets', '/customers', '/agents', '/assets', '/licenses', '/knowledge-base', '/reports', '/settings', '/onboarding', '/offboarding']

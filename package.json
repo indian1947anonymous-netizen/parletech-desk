@@ -14,7 +14,9 @@
     "db:migrate:prod": "prisma migrate deploy",
     "db:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "smtp:server": "npx tsx scripts/smtp-daemon.ts",
+    "poll:gmail": "npx tsx scripts/gmail-poller.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
@@ -63,6 +65,7 @@
     "react-dom": "19.3.0",
     "react-hook-form": "^7.91.0",
     "recharts": "^3.10.1",
+    "smtp-server": "^3.21.3",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "vaul": "^1.1.2",
@@ -76,10 +79,12 @@
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/smtp-server": "^3.5.13",
     "eslint": "^9",
     "eslint-config-next": "16.4.4",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

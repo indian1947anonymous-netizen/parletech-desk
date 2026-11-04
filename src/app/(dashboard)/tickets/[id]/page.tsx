@@ -52,6 +52,9 @@ export default async function TicketDetailPage({ params }: PageProps) {
           },
         },
         attachments: true,
+        emailLogs: {
+          orderBy: { createdAt: 'desc' },
+        },
         activities: {
           orderBy: { createdAt: 'desc' },
           include: { user: { select: { name: true } } },

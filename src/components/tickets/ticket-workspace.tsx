@@ -15,7 +15,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Clock, AlertTriangle, Send, Lock, User, Monitor, Key,
   History, Paperclip, ChevronRight, CheckCircle2, Shield,
-  Laptop, Phone, Calendar, ArrowLeft, Loader2
+  Laptop, Phone, Calendar, ArrowLeft, Loader2, Mail,
+  ArrowUpRight, ArrowDownLeft, ExternalLink
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -44,7 +45,7 @@ export function TicketWorkspace({
   const [replyType, setReplyType] = useState<'PUBLIC_REPLY' | 'INTERNAL_NOTE'>('PUBLIC_REPLY')
   const [submittingReply, setSubmittingReply] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
-  const [activeTab, setActiveTab] = useState<'conversation' | 'history'>('conversation')
+  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'emails'>('conversation')
 
   const isAgent = ['ADMIN', 'MANAGER', 'AGENT'].includes(currentUser.role)
 
@@ -263,6 +264,17 @@ export function TicketWorkspace({
             >
               Activity History ({ticket.activities?.length || 0})
             </button>
+            <button
+              onClick={() => setActiveTab('emails')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                activeTab === 'emails'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Email Thread & Outbox ({ticket.emailLogs?.length || 0})
+            </button>
           </div>
 
           {activeTab === 'conversation' && (
@@ -339,6 +351,19 @@ export function TicketWorkspace({
                 </div>
 
                 <CardContent className="p-4 space-y-3">
+                  {replyType === 'PUBLIC_REPLY' && (
+                    <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-md text-xs text-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-semibold text-blue-700">From:</span>
+                        <span className="font-medium">"{currentUser.name || 'Agent'} (ParleTech Desk)" &lt;{currentUser.email || 'support@parletech.com'}&gt;</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-semibold text-blue-700">To:</span>
+                        <span className="font-medium">{ticket.customer?.email || ticket.requester?.email || 'Customer'}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <Textarea
                     placeholder={
                       replyType === 'INTERNAL_NOTE'
@@ -400,6 +425,78 @@ export function TicketWorkspace({
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {activeTab === 'emails' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-white p-3.5 rounded-lg border border-slate-200 text-xs">
+                <span className="font-semibold text-slate-700">
+                  Total emails logged for this ticket: {ticket.emailLogs?.length || 0}
+                </span>
+                <Link
+                  href="/settings/channels/email"
+                  className="text-blue-600 hover:underline font-semibold flex items-center gap-1"
+                >
+                  Open Global Email Outbox & Simulator <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+
+              {(!ticket.emailLogs || ticket.emailLogs.length === 0) ? (
+                <div className="p-8 bg-white border border-slate-200 rounded-lg text-center text-xs text-slate-400">
+                  No email messages recorded yet for this ticket.
+                </div>
+              ) : (
+                ticket.emailLogs.map((log: any) => {
+                  const isOut = log.direction === 'OUTBOUND'
+                  return (
+                    <div
+                      key={log.id}
+                      className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 shadow-sm hover:border-blue-200 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              isOut
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}
+                          >
+                            {isOut ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
+                            {isOut ? 'OUTBOUND' : 'INBOUND'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-900">{log.subject}</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          {formatDateTime(log.createdAt)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-md">
+                        <div>
+                          <span className="text-slate-400 font-semibold mr-1">From:</span>
+                          <span className="font-medium text-slate-800">{log.from}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-semibold mr-1">To:</span>
+                          <span className="font-medium text-slate-800">{log.to}</span>
+                        </div>
+                        {log.agentName && (
+                          <div className="col-span-2">
+                            <span className="text-slate-400 font-semibold mr-1">Sent by Agent:</span>
+                            <span className="font-bold text-blue-700">{log.agentName}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed pt-1">
+                        {log.body}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           )}
         </div>
 
