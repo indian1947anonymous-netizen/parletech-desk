@@ -27,8 +27,36 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
 
     const subject = email.subject?.trim() || '(No Subject)'
     const bodyContent = email.text?.trim() || email.html?.trim() || '(No email content provided)'
+    const recipientTo = (email.to || '').toLowerCase()
 
-    // Check for ticket thread ID in subject: e.g. [TKT-0001] or TKT-0001
+    // 1. Check if this is a Gmail Forwarding Confirmation email (Zoho Desk helper)
+    if (subject.toLowerCase().includes('gmail forwarding confirmation') || bodyContent.includes('confirmation code:')) {
+      const codeMatch = bodyContent.match(/(?:confirmation code:\s*|code is\s*)([0-9]{6,12})/i)
+      if (codeMatch) {
+        const verificationCode = codeMatch[1]
+        // Find matching support email channel
+        const matchedChannel = await prisma.supportEmail.findFirst({
+          where: {
+            OR: [
+              { email: { in: [recipientTo, senderEmail] } },
+              { forwardingAddress: { contains: recipientTo } },
+            ],
+          },
+        })
+        if (matchedChannel) {
+          await prisma.supportEmail.update({
+            where: { id: matchedChannel.id },
+            data: {
+              verificationCode,
+              isVerified: true,
+            },
+          })
+          console.log(`Captured Gmail forwarding verification code: ${verificationCode}`)
+        }
+      }
+    }
+
+    // 2. Check for ticket thread ID in subject: e.g. [TKT-0001] or TKT-0001
     const ticketNumberMatch = subject.match(/TKT-\d{4}/i)
 
     if (ticketNumberMatch) {
@@ -87,8 +115,24 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       }
     }
 
-    // New Ticket Creation from Email
-    // 1. Find or create User / Customer
+    // 3. New Ticket Creation from Email
+    // Check if recipient matches a configured Support Email channel (Zoho Desk routing)
+    let assignedDepartmentId: string | undefined
+    if (recipientTo) {
+      const supportEmailChannel = await prisma.supportEmail.findFirst({
+        where: {
+          OR: [
+            { email: recipientTo },
+            { forwardingAddress: { contains: recipientTo } },
+          ],
+        },
+      })
+      if (supportEmailChannel?.departmentId) {
+        assignedDepartmentId = supportEmailChannel.departmentId
+      }
+    }
+
+    // Find or create User / Customer
     let user = await prisma.user.findUnique({ where: { email: senderEmail } })
     let customer = await prisma.customer.findUnique({ where: { email: senderEmail } })
 
@@ -129,6 +173,7 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
         priority: 'MEDIUM',
         status: 'OPEN',
         source: 'EMAIL',
+        departmentId: assignedDepartmentId,
         customerId: customer?.id,
         requesterId: user?.id,
         slaPolicyId: defaultSla?.id,

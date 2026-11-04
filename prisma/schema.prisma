@@ -201,9 +201,10 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  agents  Agent[]
-  tickets Ticket[]
-  slas    SlaPolicy[]
+  agents        Agent[]
+  tickets       Ticket[]
+  slas          SlaPolicy[]
+  supportEmails SupportEmail[]
 }
 
 model Agent {
@@ -713,4 +714,30 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 
   @@index([group])
+}
+
+// ============================================================
+// SUPPORT EMAIL CHANNELS (ZOHO DESK PATTERN)
+// ============================================================
+
+model SupportEmail {
+  id                String      @id @default(cuid())
+  email             String      @unique
+  displayName       String
+  departmentId      String?
+  department        Department? @relation(fields: [departmentId], references: [id])
+  forwardingAddress String      @unique
+  protocol          String      @default("FORWARDING") // FORWARDING, IMAP
+  imapHost          String?
+  imapPort          Int?        @default(993)
+  imapUsername      String?
+  imapPassword      String?
+  isVerified        Boolean     @default(false)
+  verificationCode  String?
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([departmentId])
+  @@index([email])
 }

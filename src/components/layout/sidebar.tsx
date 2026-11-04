@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react'
 import {
   LayoutDashboard, Ticket, Users, UserCheck, Monitor, Key,
   ClipboardList, BookOpen, BarChart3, Settings, LogOut,
-  ChevronLeft, ChevronRight, Headphones, Building2
+  ChevronLeft, ChevronRight, Headphones, Building2, Mail
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -27,6 +27,7 @@ const navItems = [
   { label: 'Customers', href: '/customers', icon: Users, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Agents', href: '/agents', icon: UserCheck, roles: ['ADMIN', 'MANAGER'] },
   { label: 'Departments', href: '/departments', icon: Building2, roles: ['ADMIN', 'MANAGER'] },
+  { label: 'Email Channels', href: '/settings/channels/email', icon: Mail, roles: ['ADMIN', 'MANAGER'] },
   { label: 'Assets', href: '/assets', icon: Monitor, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Licenses', href: '/licenses', icon: Key, roles: ['ADMIN', 'MANAGER', 'AGENT'] },
   { label: 'Onboarding', href: '/onboarding', icon: ClipboardList, roles: ['ADMIN', 'MANAGER'] },
