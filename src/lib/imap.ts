@@ -61,45 +61,58 @@ export async function pollGmailInbox() {
   try {
     await client.connect()
 
-    // Open INBOX
-    const lock = await client.getMailboxLock('INBOX')
+    // Check both INBOX and Spam so emails mistakenly flagged by Google filters aren't lost
+    const targetFolders = ['INBOX', '[Gmail]/Spam']
 
-    try {
-      // Search for unseen emails
-      const messages = client.fetch({ seen: false }, { source: true, envelope: true })
+    for (const folder of targetFolders) {
+      try {
+        const lock = await client.getMailboxLock(folder)
+        try {
+          const unseenUids = await client.search({ seen: false }, { uid: true })
+          if (!unseenUids || unseenUids.length === 0) continue
 
-      for await (const message of messages) {
-        if (!message.source) continue
+          // Process the most recent unseen messages (up to 15 per folder)
+          const targetUids = unseenUids.slice(-15)
 
-        const parsed = await simpleParser(message.source)
+          for (const uid of targetUids) {
+            for await (const message of client.fetch(String(uid), { source: true, envelope: true, uid: true }, { uid: true })) {
+              if (!message.source) continue
 
-        const fromAddress = parsed.from?.text || parsed.from?.value?.[0]?.address || ''
-        const subject = parsed.subject || '(No Subject)'
-        const bodyText = parsed.text || ''
-        const bodyHtml = parsed.html ? String(parsed.html) : undefined
+              const parsed = await simpleParser(message.source)
 
-        const res = await processIncomingEmail({
-          from: fromAddress,
-          subject,
-          text: bodyText,
-          html: bodyHtml,
-          messageId: parsed.messageId,
-          inReplyTo: parsed.inReplyTo,
-          references: parsed.references,
-        })
+              const fromAddress = parsed.from?.text || parsed.from?.value?.[0]?.address || ''
+              const subject = parsed.subject || '(No Subject)'
+              const bodyText = parsed.text || ''
+              const bodyHtml = parsed.html ? String(parsed.html) : undefined
 
-        results.push({
-          subject,
-          from: fromAddress,
-          action: res.action,
-          ticketNumber: res.ticketNumber,
-        })
+              const res = await processIncomingEmail({
+                from: fromAddress,
+                subject,
+                text: bodyText,
+                html: bodyHtml,
+                messageId: parsed.messageId,
+                inReplyTo: parsed.inReplyTo,
+                references: parsed.references,
+              })
 
-        // Mark as seen so we don't process it again
-        await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'])
+              results.push({
+                folder,
+                subject,
+                from: fromAddress,
+                action: res.action,
+                ticketNumber: res.ticketNumber,
+              })
+
+              // Mark as seen so we don't process it again
+              await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true })
+            }
+          }
+        } finally {
+          lock.release()
+        }
+      } catch (folderErr: any) {
+        console.warn(`Could not poll folder ${folder}:`, folderErr.message)
       }
-    } finally {
-      lock.release()
     }
 
     await client.logout()
