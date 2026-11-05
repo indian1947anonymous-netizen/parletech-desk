@@ -36,9 +36,17 @@ export async function getImapConfig(): Promise<ImapConfig | null> {
   }
 }
 
+let isPolling = false
+
 export async function pollGmailInbox() {
+  if (isPolling) {
+    return { success: true, processedCount: 0, skipped: true }
+  }
+  isPolling = true
+
   const config = await getImapConfig()
   if (!config) {
+    isPolling = false
     return {
       success: false,
       error: 'Gmail/IMAP settings not configured. Please enter your Gmail address and App Password in Settings.',
@@ -128,5 +136,7 @@ export async function pollGmailInbox() {
       success: false,
       error: err.message || 'Failed to connect to Gmail IMAP. Check your App Password.',
     }
+  } finally {
+    isPolling = false
   }
 }

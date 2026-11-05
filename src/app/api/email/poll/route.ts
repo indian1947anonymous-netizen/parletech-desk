@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { pollGmailInbox } from '@/lib/imap'
+import { prisma } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -20,7 +21,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
 
-  return NextResponse.json(result)
+  const ticketCount = await prisma.ticket.count()
+  return NextResponse.json({ ...result, ticketCount })
 }
 
 export async function GET(req: NextRequest) {

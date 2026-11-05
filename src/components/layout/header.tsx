@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Search, RefreshCw, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,26 @@ export function Header({ user, notificationCount = 0 }: HeaderProps) {
   const [search, setSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
 
+  // Real-time automatic email check every 3 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/email/poll', { method: 'POST' })
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.processedCount && data.processedCount > 0) {
+            toast.success(`⚡ Received ${data.processedCount} new email(s)! Updating tickets...`)
+            router.refresh()
+          }
+        }
+      } catch {
+        // silent background poll
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [router])
+
   const handleSyncGmail = async () => {
     setSyncing(true)
     try {
@@ -31,7 +51,7 @@ export function Header({ user, notificationCount = 0 }: HeaderProps) {
         toast.success(`🎉 Received ${count} new email(s)! Converted to tickets.`)
         router.refresh()
       } else {
-        toast.info('Gmail inbox & spam are up to date. No new unread messages.')
+        toast.info('Gmail is up to date (checking every 3s). No new unread messages.')
       }
     } catch (err: any) {
       toast.error(err.message || 'Error checking Gmail')
@@ -68,10 +88,14 @@ export function Header({ user, notificationCount = 0 }: HeaderProps) {
               onClick={handleSyncGmail}
               disabled={syncing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200 shadow-sm"
-              title="Poll Gmail inbox & spam for new tickets"
+              title="Auto-refreshing Gmail every 3 seconds — Click for immediate sync"
             >
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden xs:inline">{syncing ? 'Checking...' : 'Sync Gmail'}</span>
+              <span>{syncing ? 'Syncing...' : 'Live 3s Sync'}</span>
             </button>
 
             <a
