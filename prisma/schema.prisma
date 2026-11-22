@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================
@@ -275,6 +276,39 @@ model Ticket {
   firstResponseAt  DateTime?
   resolvedAt       DateTime?
   closedAt         DateTime?
+
+  // Zoho Desk Integration & Historical Tracking
+  zohoTicketId            String?        @unique
+  company                 String?
+  resolution              String?        @db.Text
+  rootCause               String?        @db.Text
+  troubleshootingSteps    String?        @db.Text
+  reportedSymptoms        String?        @db.Text
+  responseMinutes         Int?
+  resolutionMinutes       Int?
+  firstResponseTimeStr    String?
+  actualResolutionTimeStr String?
+
+  // Exact Zoho Desk Assignment & Tracking
+  assignedEngineerId    String?
+  assignedEngineerName  String?        @default("Unassigned")
+  assignedEngineerEmail String?
+  channel               String?
+  dueDate               DateTime?
+  zohoWebUrl            String?
+
+  // VIP Identification
+  isVip                   Boolean        @default(false)
+  vipReason               String?
+
+  // Telemetry links
+  deviceHostname          String?
+  assetTag                String?
+  m365Upn                 String?
+  kaseyaData              Json?
+  snipeData               Json?
+  m365Data                Json?
+  aiSummary               Json?
 
   // Metadata
   source    String   @default("WEB")
@@ -779,4 +813,89 @@ model EmailLog {
   @@index([from])
   @@index([to])
 }
+
+// ============================================================
+// KASEYA ENDPOINT MONITORING & DEVICE HEALTH
+// ============================================================
+
+model KaseyaDevice {
+  id                String   @id @default(cuid())
+  hostname          String   @unique
+  assignedUserEmail String?
+  assignedUserName  String?
+  assetTag          String?
+  os                String?  @default("Windows 11 Pro 64-bit")
+  lastCheckIn       DateTime @default(now())
+  isOnline          Boolean  @default(true)
+  agentVersion      String?  @default("10.0.12.5")
+  antivirusStatus   String?  @default("Webroot SecureAnywhere (Active)")
+  installedSoftware Json?
+  recentAlerts      Json?
+  remoteSupportUrl  String?
+  zohoAssistUrl     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([assignedUserEmail])
+  @@index([hostname])
+  @@index([assetTag])
+}
+
+// ============================================================
+// MICROSOFT 365 & ENTRA ID USER DIRECTORY
+// ============================================================
+
+model M365Account {
+  id                String    @id @default(cuid())
+  displayName       String
+  userPrincipalName String    @unique
+  primaryEmail      String    @unique
+  accountStatus     String    @default("Active")
+  assignedLicenses  String[]  @default([])
+  exchangeMailbox   Json?
+  serviceStatus     String?   @default("Healthy")
+  entraId           String?
+  mfaStatus         String?   @default("Enforced")
+  lastSignIn        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([primaryEmail])
+  @@index([userPrincipalName])
+}
+
+// ============================================================
+// VIP IDENTIFICATION & RULES ENGINE
+// ============================================================
+
+model VipRule {
+  id          String   @id @default(cuid())
+  name        String
+  matchType   String   // "EMAIL", "DOMAIN", "JOB_TITLE", "COMPANY", "DEPARTMENT"
+  pattern     String   // e.g. "CEO", "MD", "HR", "betterlending.com"
+  priority    Int      @default(1)
+  isActive    Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([matchType])
+  @@index([isActive])
+}
+
+// ============================================================
+// INTEGRATION SYNC STATUS & AUDIT
+// ============================================================
+
+model IntegrationSync {
+  id          String   @id @default(cuid())
+  systemName  String   @unique // "ZOHO_DESK", "KASEYA", "SNIPE_IT", "MICROSOFT_365"
+  status      String   // "SUCCESS", "SYNCING", "FAILED"
+  recordCount Int      @default(0)
+  lastSyncAt  DateTime @default(now())
+  details     String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 

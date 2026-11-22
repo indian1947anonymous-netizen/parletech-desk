@@ -4,7 +4,7 @@ import { useCallback, useTransition } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { X, Search } from 'lucide-react'
+import { X, Search, ShieldAlert, Filter, User, Building, Clock, Check } from 'lucide-react'
 
 interface Props {
   departments: { id: string; name: string }[]
@@ -29,100 +29,223 @@ export function TicketFilters({ departments, agents }: Props) {
     })
   }, [router, searchParams])
 
+  const setViewScope = (scope: string) => {
+    const params = new URLSearchParams()
+    if (scope === 'open') params.set('status', 'OPEN')
+    else if (scope === 'progress') params.set('status', 'IN_PROGRESS')
+    else if (scope === 'unassigned') params.set('agent', 'unassigned')
+    else if (scope === 'vip') params.set('vip', 'vip')
+    else if (scope === 'resolved') params.set('status', 'RESOLVED')
+    else if (scope === 'closed') params.set('status', 'CLOSED')
+    else if (scope === 'hold') params.set('status', 'ON_HOLD')
+
+    params.set('page', '1')
+    startTransition(() => {
+      router.push(`/tickets?${params.toString()}`)
+    })
+  }
+
   const clearFilters = () => {
     startTransition(() => {
       router.push('/tickets')
     })
   }
 
+  const currentStatus = searchParams.get('status')
+  const currentAgent = searchParams.get('agent')
+  const currentVip = searchParams.get('vip')
+
+  const isAll = !currentStatus && !currentAgent && !currentVip
+  const isOpen = currentStatus === 'OPEN'
+  const isProgress = currentStatus === 'IN_PROGRESS'
+  const isUnassigned = currentAgent === 'unassigned'
+  const isVipOnly = currentVip === 'vip'
+  const isHold = currentStatus === 'ON_HOLD'
+  const isResolved = currentStatus === 'RESOLVED'
+  const isClosed = currentStatus === 'CLOSED'
+
   const hasFilters = searchParams.has('status') ||
     searchParams.has('priority') ||
     searchParams.has('search') ||
     searchParams.has('department') ||
-    searchParams.has('agent')
+    searchParams.has('agent') ||
+    searchParams.has('vip') ||
+    searchParams.has('company') ||
+    searchParams.has('sla')
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 bg-white p-3.5 rounded-lg border border-slate-200">
-      <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-        <Input
-          placeholder="Filter by keyword / #..."
-          defaultValue={searchParams.get('search') || ''}
-          onChange={e => updateFilter('search', e.target.value)}
-          className="h-8 pl-8 text-xs bg-slate-50 border-slate-200"
-        />
+    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
+      {/* Zoho Desk Signature Quick Queue Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none">
+        <button
+          onClick={() => setViewScope('all')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isAll
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+          }`}
+        >
+          All Tickets (500)
+        </button>
+
+        <button
+          onClick={() => setViewScope('open')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isOpen
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+          }`}
+        >
+          Open
+        </button>
+
+        <button
+          onClick={() => setViewScope('progress')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isProgress
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+          }`}
+        >
+          In Progress (20)
+        </button>
+
+        <button
+          onClick={() => setViewScope('unassigned')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 flex items-center gap-1 ${
+            isUnassigned
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+          }`}
+        >
+          <span>⚠️ Unassigned (17)</span>
+        </button>
+
+        <button
+          onClick={() => setViewScope('vip')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 flex items-center gap-1 ${
+            isVipOnly
+              ? 'bg-red-600 text-white shadow-xs'
+              : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+          }`}
+        >
+          <ShieldAlert className="w-3 h-3" />
+          <span>VIP Priority (13)</span>
+        </button>
+
+        <button
+          onClick={() => setViewScope('hold')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isHold
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+          }`}
+        >
+          On Hold (6)
+        </button>
+
+        <button
+          onClick={() => setViewScope('resolved')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isResolved
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+          }`}
+        >
+          Resolved (45)
+        </button>
+
+        <button
+          onClick={() => setViewScope('closed')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${
+            isClosed
+              ? 'bg-slate-700 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+          }`}
+        >
+          Closed (429)
+        </button>
       </div>
 
-      <Select
-        value={searchParams.get('status') || 'all'}
-        onValueChange={v => updateFilter('status', v)}
-      >
-        <SelectTrigger className="w-[140px] h-8 text-xs bg-slate-50 border-slate-200">
-          <SelectValue placeholder="All Statuses" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Statuses</SelectItem>
-          <SelectItem value="OPEN">Open</SelectItem>
-          <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-          <SelectItem value="WAITING_FOR_CUSTOMER">Waiting on Customer</SelectItem>
-          <SelectItem value="WAITING_FOR_THIRD_PARTY">Waiting on 3rd Party</SelectItem>
-          <SelectItem value="ON_HOLD">On Hold</SelectItem>
-          <SelectItem value="RESOLVED">Resolved</SelectItem>
-          <SelectItem value="CLOSED">Closed</SelectItem>
-        </SelectContent>
-      </Select>
+      {/* Filter Dropdowns & Field Searches */}
+      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Input
+            placeholder="Search tickets, subjects, requesters, IDs..."
+            defaultValue={searchParams.get('search') || ''}
+            onChange={e => updateFilter('search', e.target.value)}
+            className="h-8 pl-8 text-xs bg-slate-50 hover:bg-white focus:bg-white border-slate-200 rounded-lg transition-colors placeholder:text-slate-400"
+          />
+        </div>
 
-      <Select
-        value={searchParams.get('priority') || 'all'}
-        onValueChange={v => updateFilter('priority', v)}
-      >
-        <SelectTrigger className="w-[120px] h-8 text-xs bg-slate-50 border-slate-200">
-          <SelectValue placeholder="All Priorities" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Priorities</SelectItem>
-          <SelectItem value="URGENT">Urgent</SelectItem>
-          <SelectItem value="HIGH">High</SelectItem>
-          <SelectItem value="MEDIUM">Medium</SelectItem>
-          <SelectItem value="LOW">Low</SelectItem>
-        </SelectContent>
-      </Select>
+        {/* Engineer Filter */}
+        <Select
+          value={searchParams.get('agent') || 'all'}
+          onValueChange={v => updateFilter('agent', v)}
+        >
+          <SelectTrigger className="w-[145px] h-8 text-xs bg-slate-50 border-slate-200 rounded-lg">
+            <User className="w-3 h-3 text-slate-400 mr-1" />
+            <SelectValue placeholder="All Engineers" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Engineers</SelectItem>
+            <SelectItem value="unassigned">⚠️ Unassigned Tickets (17)</SelectItem>
+            {agents.map(a => (
+              <SelectItem key={a.id} value={a.id}>{a.name || 'Unknown'}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      <Select
-        value={searchParams.get('department') || 'all'}
-        onValueChange={v => updateFilter('department', v)}
-      >
-        <SelectTrigger className="w-[140px] h-8 text-xs bg-slate-50 border-slate-200">
-          <SelectValue placeholder="All Depts" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Depts</SelectItem>
-          {departments.map(d => (
-            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        {/* Company / Department Filter */}
+        <Select
+          value={searchParams.get('company') || 'all'}
+          onValueChange={v => updateFilter('company', v)}
+        >
+          <SelectTrigger className="w-[155px] h-8 text-xs bg-slate-50 border-slate-200 rounded-lg">
+            <Building className="w-3 h-3 text-slate-400 mr-1" />
+            <SelectValue placeholder="All Departments" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Departments</SelectItem>
+            <SelectItem value="Better Lending">Better Lending</SelectItem>
+            <SelectItem value="Parle Technologies">Parle Technologies</SelectItem>
+            <SelectItem value="SkyBridge Resources">SkyBridge Resources</SelectItem>
+            <SelectItem value="CCE">CCE</SelectItem>
+            <SelectItem value="ELIO">ELIO</SelectItem>
+            <SelectItem value="Skybridge Aviation">Skybridge Aviation</SelectItem>
+            <SelectItem value="Skybridge Healthcare">Skybridge Healthcare</SelectItem>
+          </SelectContent>
+        </Select>
 
-      <Select
-        value={searchParams.get('agent') || 'all'}
-        onValueChange={v => updateFilter('agent', v)}
-      >
-        <SelectTrigger className="w-[130px] h-8 text-xs bg-slate-50 border-slate-200">
-          <SelectValue placeholder="All Agents" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Agents</SelectItem>
-          {agents.map(a => (
-            <SelectItem key={a.id} value={a.id}>{a.name || 'Unknown'}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        {/* Priority Filter */}
+        <Select
+          value={searchParams.get('priority') || 'all'}
+          onValueChange={v => updateFilter('priority', v)}
+        >
+          <SelectTrigger className="w-[120px] h-8 text-xs bg-slate-50 border-slate-200 rounded-lg">
+            <SelectValue placeholder="All Priorities" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Priorities</SelectItem>
+            <SelectItem value="URGENT">Urgent</SelectItem>
+            <SelectItem value="HIGH">High</SelectItem>
+            <SelectItem value="MEDIUM">Medium</SelectItem>
+            <SelectItem value="LOW">Low</SelectItem>
+          </SelectContent>
+        </Select>
 
-      {hasFilters && (
-        <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2 text-xs text-slate-500 hover:text-slate-800">
-          <X className="h-3 w-3 mr-1" /> Reset
-        </Button>
-      )}
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearFilters}
+            className="h-8 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold"
+          >
+            <X className="h-3.5 w-3.5 mr-1" /> Reset Filters
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

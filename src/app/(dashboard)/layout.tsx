@@ -19,12 +19,12 @@ export default async function DashboardLayout({
   }).catch(() => 0)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
       <Sidebar user={user} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header user={user} notificationCount={notificationCount} />
         <main className="flex-1 overflow-y-auto">
-          <div className="p-6">
+          <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
             {children}
           </div>
         </main>

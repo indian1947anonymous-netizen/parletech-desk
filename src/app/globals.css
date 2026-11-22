@@ -78,6 +78,26 @@
 .ProseMirror pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 6px; margin: 0.5rem 0; overflow-x: auto; }
 .ProseMirror pre code { background: none; padding: 0; color: inherit; }
 .ProseMirror strong { font-weight: 600; }
+
+/* Zoho Email Viewer Styles */
+.zoho-email-view {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1e293b;
+  line-height: 1.5;
+}
+.zoho-email-view table {
+  border-collapse: collapse;
+}
+.zoho-email-view a {
+  color: #0284c7;
+}
+.zoho-email-view a:hover {
+  text-decoration: underline;
+}
+.zoho-email-view img {
+  max-width: 100%;
+  height: auto;
+}
 .ProseMirror em { font-style: italic; }
 .ProseMirror a { color: #2563eb; text-decoration: underline; }
 

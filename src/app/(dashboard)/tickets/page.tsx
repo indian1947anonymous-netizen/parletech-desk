@@ -5,11 +5,12 @@ import Link from 'next/link'
 import { formatDate, formatRelativeTime, statusColor, statusLabel, priorityColor, priorityLabel, isOverdue } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { TicketFilters } from '@/components/tickets/ticket-filters'
-import { Plus, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, ShieldAlert, Clock, Laptop, ShieldCheck } from 'lucide-react'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Tickets' }
+export const metadata: Metadata = { title: 'IT Tickets Queue' }
 
 interface PageProps {
   searchParams: Promise<{
@@ -20,6 +21,9 @@ interface PageProps {
     agent?: string
     page?: string
     sort?: string
+    vip?: string
+    company?: string
+    sla?: string
   }>
 }
 
@@ -29,7 +33,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
 
   const params = await searchParams
   const page = parseInt(params.page || '1')
-  const limit = 20
+  const limit = 50
   const skip = (page - 1) * limit
 
   const where: any = {}
@@ -39,24 +43,71 @@ export default async function TicketsPage({ searchParams }: PageProps) {
     where.requesterId = session.user.id
   }
 
+  // Global search across: Ticket ID, Requester name, Email, Company, Engineer, Device hostname, Asset tag, Subject, Error messages
   if (params.search) {
+    const s = params.search.trim()
     where.OR = [
-      { subject: { contains: params.search, mode: 'insensitive' } },
-      { ticketNumber: { contains: params.search, mode: 'insensitive' } },
-      { description: { contains: params.search, mode: 'insensitive' } },
+      { ticketNumber: { contains: s, mode: 'insensitive' } },
+      { zohoTicketId: { contains: s, mode: 'insensitive' } },
+      { subject: { contains: s, mode: 'insensitive' } },
+      { description: { contains: s, mode: 'insensitive' } },
+      { rootCause: { contains: s, mode: 'insensitive' } },
+      { reportedSymptoms: { contains: s, mode: 'insensitive' } },
+      { resolution: { contains: s, mode: 'insensitive' } },
+      { deviceHostname: { contains: s, mode: 'insensitive' } },
+      { assetTag: { contains: s, mode: 'insensitive' } },
+      { company: { contains: s, mode: 'insensitive' } },
+      { assignedEngineerName: { contains: s, mode: 'insensitive' } },
+      { requester: { name: { contains: s, mode: 'insensitive' } } },
+      { requester: { email: { contains: s, mode: 'insensitive' } } },
+      { agent: { name: { contains: s, mode: 'insensitive' } } },
     ]
   }
+
   if (params.status && params.status !== 'all') where.status = params.status
   if (params.priority && params.priority !== 'all') where.priority = params.priority
-  if (params.department && params.department !== 'all') where.departmentId = params.department
-  if (params.agent && params.agent !== 'all') where.agentId = params.agent
+  if (params.department && params.department !== 'all') {
+    where.OR = [
+      { departmentId: params.department },
+      { company: { contains: params.department, mode: 'insensitive' } }
+    ]
+  }
 
-  const orderBy: any = {}
+  if (params.agent && params.agent !== 'all') {
+    if (params.agent === 'unassigned') {
+      where.assignedEngineerName = 'Unassigned'
+    } else {
+      where.OR = [
+        { agentId: params.agent },
+        { assignedEngineerName: { contains: params.agent, mode: 'insensitive' } }
+      ]
+    }
+  }
+
+  if (params.company && params.company !== 'all') where.company = { contains: params.company, mode: 'insensitive' }
+
+  if (params.vip === 'vip') {
+    where.isVip = true
+  } else if (params.vip === 'standard') {
+    where.isVip = false
+  }
+
+  if (params.sla === 'breached') {
+    where.slaBreached = true
+  } else if (params.sla === 'compliant') {
+    where.slaBreached = false
+  }
+
+  // Sort order: VIP tickets prioritized, then by date or selected sort
+  const orderBy: any = [
+    { isVip: 'desc' }
+  ]
+
   switch (params.sort) {
-    case 'priority': orderBy.priority = 'desc'; break
-    case 'updated': orderBy.updatedAt = 'desc'; break
-    case 'oldest': orderBy.createdAt = 'asc'; break
-    default: orderBy.createdAt = 'desc'
+    case 'priority': orderBy.push({ priority: 'desc' }); break
+    case 'updated': orderBy.push({ updatedAt: 'desc' }); break
+    case 'oldest': orderBy.push({ createdAt: 'asc' }); break
+    default: orderBy.push({ createdAt: 'desc' })
   }
 
   let tickets: any[] = []
@@ -72,9 +123,9 @@ export default async function TicketsPage({ searchParams }: PageProps) {
         take: limit,
         orderBy,
         include: {
-          requester: { select: { name: true, email: true } },
+          requester: { select: { name: true, email: true, jobTitle: true, department: true } },
           customer: { select: { name: true, email: true } },
-          agent: { select: { name: true } },
+          agent: { select: { name: true, email: true } },
           department: { select: { name: true } },
           _count: { select: { comments: true } },
         }
@@ -99,104 +150,209 @@ export default async function TicketsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Zoho Desk Styled View Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Tickets</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {total} total {total === 1 ? 'ticket' : 'tickets'}
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Tickets Queue</h1>
+            <span className="text-[11px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+              {total} Total
+            </span>
+            <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Zoho Desk Live
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Real-time synchronization with Zoho Desk Organization #787180614
           </p>
         </div>
-        <Button asChild size="sm">
-          <Link href="/tickets/new">
-            <Plus className="h-4 w-4 mr-1.5" /> New Ticket
-          </Link>
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm" className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50">
+            <a href="https://desk.zoho.com/agent/parletech" target="_blank" rel="noopener noreferrer">
+              Open Zoho Portal ↗
+            </a>
+          </Button>
+          <Button asChild size="sm" className="h-8 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs">
+            <Link href="/tickets/new">
+              <Plus className="h-3.5 w-3.5 mr-1" /> New Ticket
+            </Link>
+          </Button>
+        </div>
       </div>
 
+      {/* Zoho Desk Signature Quick Filters & Queue Tabs */}
       <TicketFilters departments={departments} agents={agents} />
 
-      <Card className="border-slate-200 shadow-sm">
+      {/* Zoho Desk Clean Ticket Table */}
+      <Card className="border-slate-200/90 shadow-xs overflow-hidden rounded-xl bg-white">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/75">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Ticket</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Requester</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Assigned Agent</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Department</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Created</th>
+                <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3">Ticket</th>
+                  <th className="px-4 py-3 min-w-[260px]">Subject</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Requester</th>
+                  <th className="px-4 py-3 hidden lg:table-cell">Assigned Engineer</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Department</th>
+                  <th className="px-4 py-3 text-center">Priority</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 hidden sm:table-cell text-right">Created</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 text-xs">
                 {tickets.map((ticket) => {
-                  const overdue = isOverdue(ticket.slaResolutionDue) && !['RESOLVED', 'CLOSED'].includes(ticket.status)
+                  const reqName = ticket.requester?.name || ticket.customer?.name || 'Customer'
+                  const reqInitials = reqName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+                  const isUnassigned = !ticket.assignedEngineerName || ticket.assignedEngineerName === 'Unassigned'
+
                   return (
-                    <tr key={ticket.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <Link href={`/tickets/${ticket.id}`} className="group block">
-                          <div className="flex items-center gap-2">
-                            {overdue && (
-                              <span title="Resolution SLA Overdue">
-                                <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0 animate-pulse" />
-                              </span>
-                            )}
-                            <span className="font-semibold text-sm text-blue-600 group-hover:underline">
-                              {ticket.ticketNumber}
+                    <tr
+                      key={ticket.id}
+                      className={`group transition-colors ${
+                        ticket.isVip ? 'bg-red-50/20 hover:bg-red-50/40' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {/* Ticket Number & ID */}
+                      <td className="px-4 py-3 align-top whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`/tickets/${ticket.id}`}
+                            className="font-bold text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {ticket.ticketNumber}
+                          </Link>
+                          {ticket.isVip && (
+                            <span className="text-[9px] font-black bg-red-600 text-white px-1 py-0.2 rounded" title="VIP Account">
+                              VIP
                             </span>
-                            {ticket._count?.comments > 0 && (
-                              <span className="inline-flex items-center text-xs text-slate-400 gap-0.5">
-                                <MessageSquare className="h-3 w-3" />
-                                {ticket._count.comments}
+                          )}
+                        </div>
+                        {ticket.zohoTicketId && (
+                          <a
+                            href={ticket.zohoWebUrl || `https://desk.zoho.com/support/parletech/ShowHomePage.do#Cases/dv/${ticket.zohoTicketId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-mono text-slate-400 hover:text-blue-600 flex items-center gap-0.5 mt-0.5"
+                            title="Open in Zoho Desk"
+                          >
+                            <span>#{ticket.zohoTicketId}</span>
+                            <span className="text-[9px]">↗</span>
+                          </a>
+                        )}
+                      </td>
+
+                      {/* Subject & Channel */}
+                      <td className="px-4 py-3 align-top">
+                        <Link
+                          href={`/tickets/${ticket.id}`}
+                          className="font-semibold text-slate-800 hover:text-blue-600 line-clamp-1 block leading-snug"
+                          title={ticket.subject}
+                        >
+                          {ticket.subject}
+                        </Link>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                          <span>{ticket.channel || 'Email'}</span>
+                          <span>•</span>
+                          <span>{ticket._count?.comments || 0} message{ticket._count?.comments === 1 ? '' : 's'}</span>
+                          {ticket.deviceHostname && (
+                            <>
+                              <span>•</span>
+                              <span className="text-blue-600 font-mono font-medium flex items-center gap-1">
+                                🖥️ {ticket.deviceHostname}
                               </span>
+                            </>
+                          )}
+                          {ticket.reportedSymptoms && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[150px] text-slate-400">{ticket.reportedSymptoms}</span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Requester with initial avatar */}
+                      <td className="px-4 py-3 align-top hidden md:table-cell">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            {reqInitials}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 truncate max-w-[140px] leading-tight">
+                              {reqName}
+                            </p>
+                            <p className="text-[10px] text-slate-400 truncate max-w-[140px] leading-tight">
+                              {ticket.requester?.email || ticket.customer?.email || ''}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Assigned Engineer */}
+                      <td className="px-4 py-3 align-top hidden lg:table-cell">
+                        {!isUnassigned ? (
+                          <div>
+                            <p className="font-semibold text-slate-800 flex items-center gap-1.5 leading-tight">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              <span className="truncate max-w-[140px]">{ticket.assignedEngineerName}</span>
+                            </p>
+                            {ticket.assignedEngineerEmail && (
+                              <p className="text-[10px] text-slate-400 truncate max-w-[140px] pl-3 leading-tight mt-0.5">
+                                {ticket.assignedEngineerEmail}
+                              </p>
                             )}
                           </div>
-                          <p className="text-xs text-slate-700 font-medium truncate max-w-[240px] sm:max-w-[320px] mt-0.5">
-                            {ticket.subject}
-                          </p>
-                        </Link>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                            ⚠️ Unassigned
+                          </span>
+                        )}
                       </td>
-                      <td className="px-5 py-3.5 hidden md:table-cell">
-                        <p className="text-sm font-medium text-slate-800">
-                          {ticket.requester?.name || ticket.customer?.name || '—'}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {ticket.requester?.email || ticket.customer?.email || ''}
-                        </p>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(ticket.status)}`}>
-                          {statusLabel(ticket.status)}
+
+                      {/* Department */}
+                      <td className="px-4 py-3 align-top hidden md:table-cell whitespace-nowrap">
+                        <span className="text-[11px] font-medium text-slate-700 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
+                          {ticket.department?.name || ticket.company || 'Parle Technologies'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColor(ticket.priority)}`}>
+
+                      {/* Priority */}
+                      <td className="px-4 py-3 align-top text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${priorityColor(ticket.priority)}`}>
                           {priorityLabel(ticket.priority)}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden lg:table-cell">
-                        <p className="text-sm text-slate-700">
-                          {ticket.agent?.name || <span className="text-slate-400 italic">Unassigned</span>}
-                        </p>
+
+                      {/* Status */}
+                      <td className="px-4 py-3 align-top text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${statusColor(ticket.status)}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                          {statusLabel(ticket.status)}
+                        </span>
                       </td>
-                      <td className="px-5 py-3.5 hidden lg:table-cell">
-                        <p className="text-xs text-slate-600 font-medium">{ticket.department?.name || '—'}</p>
-                      </td>
-                      <td className="px-5 py-3.5 hidden sm:table-cell">
-                        <p className="text-xs text-slate-500">{formatRelativeTime(ticket.createdAt)}</p>
+
+                      {/* Created Date */}
+                      <td className="px-4 py-3 align-top hidden sm:table-cell text-right whitespace-nowrap">
+                        <p className="text-slate-700 font-medium">{formatDate(ticket.createdAt)}</p>
+                        <p className="text-[10px] text-slate-400">{formatRelativeTime(ticket.createdAt)}</p>
                       </td>
                     </tr>
                   )
                 })}
+
                 {tickets.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center">
-                      <p className="text-slate-500 text-sm">No tickets matched the filter criteria.</p>
-                      <Button asChild className="mt-4" size="sm">
-                        <Link href="/tickets/new">Create a Ticket</Link>
-                      </Button>
+                    <td colSpan={8} className="px-5 py-12 text-center">
+                      <div className="max-w-sm mx-auto space-y-2">
+                        <p className="font-semibold text-slate-800 text-sm">No tickets found</p>
+                        <p className="text-slate-400 text-xs">No tickets match the current filter selection or search query.</p>
+                        <Button asChild size="sm" className="mt-2 bg-blue-600 text-white">
+                          <Link href="/tickets">Clear All Filters</Link>
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -204,39 +360,39 @@ export default async function TicketsPage({ searchParams }: PageProps) {
             </table>
           </div>
 
-          {/* Pagination Controls */}
+          {/* Zoho Desk Clean Pagination Bar */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
-              <p className="text-xs text-slate-500">
-                Showing <span className="font-semibold">{skip + 1}</span> to{' '}
-                <span className="font-semibold">{Math.min(skip + limit, total)}</span> of{' '}
-                <span className="font-semibold">{total}</span>
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/60 text-xs">
+              <p className="text-slate-500 text-xs">
+                Showing <span className="font-semibold text-slate-800">{skip + 1}</span> -{' '}
+                <span className="font-semibold text-slate-800">{Math.min(skip + limit, total)}</span> of{' '}
+                <span className="font-semibold text-slate-800">{total}</span> tickets
               </p>
               <div className="flex items-center gap-1.5">
                 {page > 1 ? (
-                  <Button variant="outline" size="sm" asChild className="h-8 px-2 text-xs">
-                    <Link href={`/tickets?page=${page - 1}&status=${params.status || ''}&search=${params.search || ''}`}>
+                  <Button variant="outline" size="sm" asChild className="h-7.5 px-2.5 text-xs bg-white border-slate-200">
+                    <Link href={`/tickets?page=${page - 1}&status=${params.status || ''}&search=${params.search || ''}&vip=${params.vip || ''}&company=${params.company || ''}&agent=${params.agent || ''}`}>
                       <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
                     </Link>
                   </Button>
                 ) : (
-                  <Button variant="outline" size="sm" disabled className="h-8 px-2 text-xs opacity-50">
+                  <Button variant="outline" size="sm" disabled className="h-7.5 px-2.5 text-xs opacity-50 bg-white">
                     <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
                   </Button>
                 )}
 
                 <span className="text-xs px-2 text-slate-600 font-medium">
-                  Page {page} of {totalPages}
+                  {page} / {totalPages}
                 </span>
 
                 {page < totalPages ? (
-                  <Button variant="outline" size="sm" asChild className="h-8 px-2 text-xs">
-                    <Link href={`/tickets?page=${page + 1}&status=${params.status || ''}&search=${params.search || ''}`}>
+                  <Button variant="outline" size="sm" asChild className="h-7.5 px-2.5 text-xs bg-white border-slate-200">
+                    <Link href={`/tickets?page=${page + 1}&status=${params.status || ''}&search=${params.search || ''}&vip=${params.vip || ''}&company=${params.company || ''}&agent=${params.agent || ''}`}>
                       Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
                     </Link>
                   </Button>
                 ) : (
-                  <Button variant="outline" size="sm" disabled className="h-8 px-2 text-xs opacity-50">
+                  <Button variant="outline" size="sm" disabled className="h-7.5 px-2.5 text-xs opacity-50 bg-white">
                     Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
                   </Button>
                 )}

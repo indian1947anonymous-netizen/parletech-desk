@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { z } from 'zod'
 import { sendEmail, newReplyEmail } from '@/lib/email'
+import { zohoDeskService } from '@/lib/integrations/zoho'
 
 const schema = z.object({
   content: z.string().min(1),
@@ -96,6 +97,19 @@ export async function POST(
         agentEmail,
         direction: 'OUTBOUND',
       }).catch(console.error)
+    }
+
+    // Sync updates directly with Zoho Desk if this ticket originated from Zoho Desk
+    if (ticket.zohoTicketId) {
+      if (data.type === 'INTERNAL_NOTE') {
+        zohoDeskService.addComment(ticket.zohoTicketId, data.content, false).catch((err) => {
+          console.warn('[Zoho Desk API] Internal note sync skipped or failed:', err.message)
+        })
+      } else if (data.type === 'PUBLIC_REPLY' && session.user.id !== ticket.requesterId) {
+        zohoDeskService.sendReply(ticket.zohoTicketId, data.content, recipientEmail).catch((err) => {
+          console.warn('[Zoho Desk API] Public reply sync skipped or failed:', err.message)
+        })
+      }
     }
 
     // App notification for user

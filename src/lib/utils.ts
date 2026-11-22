@@ -71,25 +71,25 @@ export function formatFileSize(bytes: number): string {
 
 export function priorityColor(priority: string): string {
   const colors: Record<string, string> = {
-    LOW: 'text-green-600 bg-green-50 border-green-200',
-    MEDIUM: 'text-yellow-600 bg-yellow-50 border-yellow-200',
-    HIGH: 'text-orange-600 bg-orange-50 border-orange-200',
-    URGENT: 'text-red-600 bg-red-50 border-red-200',
+    LOW: 'text-slate-700 bg-slate-100 border-slate-200',
+    MEDIUM: 'text-blue-700 bg-blue-50/80 border-blue-200',
+    HIGH: 'text-amber-700 bg-amber-50 border-amber-200',
+    URGENT: 'text-rose-700 bg-rose-50 border-rose-200 font-bold',
   }
-  return colors[priority] || 'text-gray-600 bg-gray-50 border-gray-200'
+  return colors[priority] || 'text-slate-600 bg-slate-50 border-slate-200'
 }
 
 export function statusColor(status: string): string {
   const colors: Record<string, string> = {
-    OPEN: 'text-blue-600 bg-blue-50 border-blue-200',
-    IN_PROGRESS: 'text-purple-600 bg-purple-50 border-purple-200',
-    WAITING_FOR_CUSTOMER: 'text-yellow-600 bg-yellow-50 border-yellow-200',
-    WAITING_FOR_THIRD_PARTY: 'text-orange-600 bg-orange-50 border-orange-200',
-    ON_HOLD: 'text-gray-600 bg-gray-50 border-gray-200',
-    RESOLVED: 'text-green-600 bg-green-50 border-green-200',
-    CLOSED: 'text-gray-500 bg-gray-50 border-gray-200',
+    OPEN: 'text-blue-700 bg-blue-50 border-blue-200',
+    IN_PROGRESS: 'text-indigo-700 bg-indigo-50 border-indigo-200',
+    WAITING_FOR_CUSTOMER: 'text-amber-700 bg-amber-50 border-amber-200',
+    WAITING_FOR_THIRD_PARTY: 'text-orange-700 bg-orange-50 border-orange-200',
+    ON_HOLD: 'text-slate-700 bg-slate-100 border-slate-200',
+    RESOLVED: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+    CLOSED: 'text-zinc-600 bg-zinc-100 border-zinc-200',
   }
-  return colors[status] || 'text-gray-600 bg-gray-50 border-gray-200'
+  return colors[status] || 'text-slate-600 bg-slate-50 border-slate-200'
 }
 
 export function statusLabel(status: string): string {
