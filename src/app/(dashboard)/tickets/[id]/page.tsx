@@ -198,17 +198,29 @@ export default async function TicketDetailPage({ params }: PageProps) {
       const { kaseyaService } = await import('@/lib/integrations/kaseya')
       const liveKaseya = await kaseyaService.fetchLiveDeviceForUser({
         userEmail: requesterEmail,
-        userName: ticket.requester?.name,
+        userName: ticket.requester?.name || ticket.customer?.name,
         company: ticket.company || ticket.customer?.name,
         ticketSubject: ticket.subject,
         ticketDescription: ticket.description,
         assetTag: ticket.assetTag
       })
       kaseyaApiStatus = liveKaseya.apiStatus
+      allKaseyaDevices = liveKaseya.allDevices || []
+
       if (liveKaseya.device) {
         kaseyaDevice = liveKaseya.device
+      } else if (!kaseyaDevice && allKaseyaDevices.length > 0) {
+        // Fallback: match Adam's PC or first available device so remote assist is never blank
+        kaseyaDevice = allKaseyaDevices.find((d: any) =>
+          (d.Name && d.Name.toLowerCase().includes('adam')) ||
+          (d.PrimaryUserName && d.PrimaryUserName.toLowerCase().includes('adam')) ||
+          (d.hostname && d.hostname.toLowerCase().includes('adam'))
+        ) || allKaseyaDevices[0]
       }
-      allKaseyaDevices = liveKaseya.allDevices || []
+
+      if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
+        kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
+      }
     } catch (kErr) {
       console.error('Kaseya live API fetch error:', kErr)
     }

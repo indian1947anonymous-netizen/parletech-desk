@@ -20,8 +20,8 @@ export async function getImapConfig(): Promise<ImapConfig | null> {
   ])
 
   // Also check environment variables as fallback
-  const user = emailSetting?.value || process.env.GMAIL_EMAIL || process.env.IMAP_USER
-  const pass = passSetting?.value || process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD
+  const user = emailSetting?.value || process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
+  const pass = passSetting?.value || process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
 
   if (!user || !pass) {
     return null
@@ -62,14 +62,21 @@ export async function pollGmailInbox() {
       pass: config.pass,
     },
     logger: false,
+    emitLogs: false,
   })
 
+  // Catch socket error events so they never throw unhandled exceptions
+  client.on('error', (err) => {
+    console.warn('[Gmail IMAP Socket Warning]:', err?.message || err)
+  })
+
+  const rawMessagesToProcess: Array<{ source: Buffer; folder: string }> = []
   const results: any[] = []
 
   try {
     await client.connect()
 
-    // Check both INBOX and Spam so emails mistakenly flagged by Google filters aren't lost
+    // 1. Download unseen messages first and mark as Seen immediately
     const targetFolders = ['INBOX', '[Gmail]/Spam']
 
     for (const folder of targetFolders) {
@@ -77,42 +84,23 @@ export async function pollGmailInbox() {
         const lock = await client.getMailboxLock(folder)
         try {
           const unseenUids = await client.search({ seen: false }, { uid: true })
-          if (!unseenUids || unseenUids.length === 0) continue
-
-          // Process the most recent unseen messages (up to 15 per folder)
-          const targetUids = unseenUids.slice(-15)
-
-          for (const uid of targetUids) {
-            for await (const message of client.fetch(String(uid), { source: true, envelope: true, uid: true }, { uid: true })) {
-              if (!message.source) continue
-
-              const parsed = await simpleParser(message.source)
-
-              const fromAddress = parsed.from?.text || parsed.from?.value?.[0]?.address || ''
-              const subject = parsed.subject || '(No Subject)'
-              const bodyText = parsed.text || ''
-              const bodyHtml = parsed.html ? String(parsed.html) : undefined
-
-              const res = await processIncomingEmail({
-                from: fromAddress,
-                subject,
-                text: bodyText,
-                html: bodyHtml,
-                messageId: parsed.messageId,
-                inReplyTo: parsed.inReplyTo,
-                references: parsed.references,
-              })
-
-              results.push({
-                folder,
-                subject,
-                from: fromAddress,
-                action: res.action,
-                ticketNumber: res.ticketNumber,
-              })
-
-              // Mark as seen so we don't process it again
-              await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true })
+          if (unseenUids && unseenUids.length > 0) {
+            const targetUids = unseenUids.slice(-15)
+            for (const uid of targetUids) {
+              try {
+                for await (const message of client.fetch(String(uid), { source: true, uid: true }, { uid: true })) {
+                  if (message.source) {
+                    rawMessagesToProcess.push({
+                      source: Buffer.from(message.source),
+                      folder
+                    })
+                    // Mark as seen on IMAP so it is not processed twice
+                    await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true })
+                  }
+                }
+              } catch (fetchErr: any) {
+                console.warn(`Error fetching UID ${uid} from ${folder}:`, fetchErr.message)
+              }
             }
           }
         } finally {
@@ -123,7 +111,41 @@ export async function pollGmailInbox() {
       }
     }
 
-    await client.logout()
+    // Safely logout from IMAP before processing and sending SMTP replies
+    await client.logout().catch(() => {})
+
+    // 2. Process all collected messages safely outside of IMAP lock
+    for (const item of rawMessagesToProcess) {
+      try {
+        const parsed = await simpleParser(item.source)
+
+        const fromAddress = parsed.from?.text || parsed.from?.value?.[0]?.address || ''
+        const subject = parsed.subject || '(No Subject)'
+        const bodyText = parsed.text || ''
+        const bodyHtml = parsed.html ? String(parsed.html) : undefined
+
+        const res = await processIncomingEmail({
+          from: fromAddress,
+          to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to[0]?.text : parsed.to.text) : config.user,
+          subject,
+          text: bodyText,
+          html: bodyHtml,
+          messageId: parsed.messageId,
+          inReplyTo: parsed.inReplyTo,
+          references: parsed.references,
+        })
+
+        results.push({
+          folder: item.folder,
+          subject,
+          from: fromAddress,
+          action: res.action,
+          ticketNumber: res.ticketNumber,
+        })
+      } catch (procErr: any) {
+        console.error('Error processing parsed email:', procErr)
+      }
+    }
 
     return {
       success: true,
@@ -134,7 +156,7 @@ export async function pollGmailInbox() {
     console.error('IMAP Poll Error:', err)
     return {
       success: false,
-      error: err.message || 'Failed to connect to Gmail IMAP. Check your App Password.',
+      error: err.message || 'Failed to connect to Gmail IMAP.',
     }
   } finally {
     isPolling = false

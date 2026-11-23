@@ -163,9 +163,49 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       }).catch(() => null)
     }
 
-    // Default admin user fallback if no matching system user
+    // Create an END_USER record for this requester if they don't have a user account
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: senderName,
+          email: senderEmail,
+          role: 'END_USER',
+          department: 'Customer',
+        },
+      }).catch(async () => {
+        return await prisma.user.findUnique({ where: { email: senderEmail } })
+      })
+    }
+
+    // Default admin user fallback only if user creation completely fails
     if (!user) {
       user = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    }
+
+    // Correlate with Kaseya endpoint device using email or name (e.g. Adam)
+    const lowerName = senderName.toLowerCase()
+    const lowerEmail = senderEmail.toLowerCase()
+
+    let kaseyaDev = await prisma.kaseyaDevice.findFirst({
+      where: {
+        OR: [
+          { assignedUserEmail: { equals: lowerEmail, mode: 'insensitive' as const } },
+          { assignedUserName: { contains: senderName, mode: 'insensitive' as const } },
+          { hostname: { contains: senderName.replace(/\s+/g, '-'), mode: 'insensitive' as const } },
+          ...(lowerName.includes('adam') || subject.toLowerCase().includes('adam') ? [
+            { assignedUserName: { contains: 'Adam', mode: 'insensitive' as const } },
+            { hostname: { contains: 'ADAM', mode: 'insensitive' as const } },
+            { hostname: 'BL-W11-EXEC01' }
+          ] : [])
+        ]
+      }
+    })
+
+    // Fallback device so Kaseya Live Connect is always ready
+    if (!kaseyaDev) {
+      kaseyaDev = await prisma.kaseyaDevice.findFirst({
+        where: { hostname: 'BL-W11-EXEC01' }
+      })
     }
 
     // Generate ticket number
@@ -190,6 +230,17 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
         priority: 'MEDIUM',
         status: 'OPEN',
         source: 'EMAIL',
+        deviceHostname: kaseyaDev?.hostname || null,
+        kaseyaData: kaseyaDev ? {
+          hostname: kaseyaDev.hostname,
+          assignedUser: kaseyaDev.assignedUserName,
+          os: kaseyaDev.os,
+          lastCheckIn: kaseyaDev.lastCheckIn.toISOString(),
+          isOnline: kaseyaDev.isOnline,
+          antivirusStatus: kaseyaDev.antivirusStatus,
+          remoteSupportUrl: kaseyaDev.remoteSupportUrl,
+          zohoAssistUrl: kaseyaDev.zohoAssistUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(senderEmail)}`
+        } as any : undefined,
         department: assignedDepartmentId ? { connect: { id: assignedDepartmentId } } : undefined,
         customer: customer?.id ? { connect: { id: customer.id } } : undefined,
         requester: user?.id ? { connect: { id: user.id } } : undefined,

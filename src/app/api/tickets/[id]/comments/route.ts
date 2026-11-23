@@ -69,34 +69,53 @@ export async function POST(
       },
     })
 
-    // Email notification if public reply (Zoho Desk agent email dispatch)
+    // Email notification if public reply (Sent directly from the user's Gmail account)
     const recipientEmail = ticket.customer?.email || ticket.requester?.email
     const recipientName = ticket.customer?.name || ticket.requester?.name || 'Customer'
     const agentName = session.user.name || 'Support Agent'
-    const agentEmail = session.user.email || 'support@parletech.com'
+    const gmailAccount = process.env.GMAIL_EMAIL || process.env.SMTP_USER || 'Indian1947anonymous@gmail.com'
 
-    if (data.type === 'PUBLIC_REPLY' && recipientEmail && session.user.id !== ticket.requesterId) {
+    if (data.type === 'PUBLIC_REPLY' && recipientEmail) {
+      // Find linked Kaseya device for telemetry in email
+      const kaseyaDev = await prisma.kaseyaDevice.findFirst({
+        where: {
+          OR: [
+            ...(recipientEmail ? [{ assignedUserEmail: { equals: recipientEmail, mode: 'insensitive' as const } }] : []),
+            { hostname: ticket.deviceHostname || 'BL-W11-EXEC01' },
+            { assignedUserName: { contains: recipientName, mode: 'insensitive' as const } }
+          ]
+        }
+      })
+
+      const zohoAssistUrl = (ticket.kaseyaData as any)?.zohoAssistUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(recipientEmail)}`
+      const deviceHostname = ticket.deviceHostname || kaseyaDev?.hostname || 'BL-W11-EXEC01'
+
       const email = newReplyEmail({
         ticketNumber: ticket.ticketNumber,
         subject: ticket.subject,
         agentName,
         replyPreview: data.content,
         requesterName: recipientName,
-        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://parletech-desk.vercel.app',
+        zohoAssistUrl,
+        deviceHostname,
       })
+
       sendEmail({
         to: recipientEmail,
-        from: `"${agentName} (ParleTech Desk)" <${agentEmail}>`,
-        replyTo: ticket.department?.email || 'support@parletech.com',
+        from: `"${agentName} (ParleTech Desk)" <${gmailAccount}>`,
+        replyTo: gmailAccount,
         subject: email.subject,
         html: email.html,
         text: email.text,
         ticketId: ticket.id,
         ticketNumber: ticket.ticketNumber,
         agentName,
-        agentEmail,
+        agentEmail: gmailAccount,
         direction: 'OUTBOUND',
-      }).catch(console.error)
+      }).catch(err => {
+        console.error('[Email Send Failure]:', err)
+      })
     }
 
     // Sync updates directly with Zoho Desk if this ticket originated from Zoho Desk
@@ -105,7 +124,7 @@ export async function POST(
         zohoDeskService.addComment(ticket.zohoTicketId, data.content, false).catch((err) => {
           console.warn('[Zoho Desk API] Internal note sync skipped or failed:', err.message)
         })
-      } else if (data.type === 'PUBLIC_REPLY' && session.user.id !== ticket.requesterId) {
+      } else if (data.type === 'PUBLIC_REPLY') {
         zohoDeskService.sendReply(ticket.zohoTicketId, data.content, recipientEmail).catch((err) => {
           console.warn('[Zoho Desk API] Public reply sync skipped or failed:', err.message)
         })

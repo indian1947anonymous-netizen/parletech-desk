@@ -1258,6 +1258,36 @@ export function TicketWorkspace({
                           <Sparkles className="w-3.5 h-3.5 mr-1 text-indigo-600" />
                           <span>AI Draft</span>
                         </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => {
+                            const link = assistSession?.customerUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(ticket.requester?.email || ticket.customer?.email || '')}`
+                            setReplyContent(prev => `${prev}\n\nPlease join our remote support session using this secure link: ${link}`.trim())
+                          }}
+                          className="h-8 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50"
+                          title="Insert Zoho Assist Remote Support Link into response"
+                        >
+                          <Radio className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                          <span>+ Zoho Assist</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => {
+                            const host = kaseyaDevice?.hostname || kaseyaDevice?.Name || 'Workstation'
+                            setReplyContent(prev => `${prev}\n\n[Endpoint Diagnostics: Connected to ${host} via Kaseya VSA X Agent. Remote control session ready.]`.trim())
+                          }}
+                          className="h-8 text-xs text-blue-700 border-blue-200 bg-blue-50/40 hover:bg-blue-50"
+                          title="Insert Kaseya Endpoint Diagnostics info into response"
+                        >
+                          <Monitor className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                          <span>+ Kaseya Info</span>
+                        </Button>
                       </div>
 
                       <div className="flex items-center gap-2">

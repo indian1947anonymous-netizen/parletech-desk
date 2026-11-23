@@ -1,10 +1,11 @@
 'use client'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useTransition } from 'react'
+import { useCallback, useTransition, useState, useEffect } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { X, Search, ShieldAlert, Filter, User, Building, Clock, Check } from 'lucide-react'
+import { X, Search, ShieldAlert, Filter, User, Building, Clock, Check, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Props {
   departments: { id: string; name: string }[]
@@ -15,6 +16,42 @@ export function TicketFilters({ departments, agents }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [, startTransition] = useTransition()
+  const [syncingGmail, setSyncingGmail] = useState(false)
+
+  const handleSyncGmail = async () => {
+    setSyncingGmail(true)
+    try {
+      const res = await fetch('/api/email/poll', { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        if (data.processedCount > 0) {
+          toast.success(`Synced ${data.processedCount} new email(s) from Indian1947anonymous@gmail.com!`)
+          router.refresh()
+        } else {
+          toast.info('Gmail is up to date (no new unread emails).')
+        }
+      } else {
+        toast.error(data.error || 'Failed to sync Gmail')
+      }
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setSyncingGmail(false)
+    }
+  }
+
+  // Auto-poll on component mount
+  useEffect(() => {
+    fetch('/api/email/poll', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.processedCount > 0) {
+          toast.success(`Auto-synced ${d.processedCount} new email(s)!`)
+          router.refresh()
+        }
+      })
+      .catch(() => {})
+  }, [router])
 
   const updateFilter = useCallback((key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -245,6 +282,19 @@ export function TicketFilters({ departments, agents }: Props) {
             <X className="h-3.5 w-3.5 mr-1" /> Reset Filters
           </Button>
         )}
+
+        {/* Sync Gmail Button */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleSyncGmail}
+          disabled={syncingGmail}
+          className="h-8 px-3 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 ml-auto flex items-center gap-1.5 shadow-xs"
+          title="Check Indian1947anonymous@gmail.com for new tickets or customer replies"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${syncingGmail ? 'animate-spin text-emerald-600' : 'text-emerald-700'}`} />
+          <span>{syncingGmail ? 'Checking Gmail...' : 'Sync Gmail'}</span>
+        </Button>
       </div>
     </div>
   )

@@ -98,8 +98,13 @@ export function agentReplyEmail(params: {
   replyContent: string
   requesterName: string
   appUrl: string
+  zohoAssistUrl?: string
+  deviceHostname?: string
 }): { subject: string; html: string; text: string } {
   const subject = `Re: [${params.ticketNumber}] ${params.subject}`
+  const assistLink = params.zohoAssistUrl || 'https://assist.zoho.com'
+  const endpointInfo = params.deviceHostname ? `Endpoint: ${params.deviceHostname} | Kaseya Agent Online` : 'Kaseya VSA X Agent Online'
+
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 650px; margin: 0 auto; color: #1e293b;">
       <div style="background: #0f172a; padding: 20px 24px; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: space-between;">
@@ -110,6 +115,24 @@ export function agentReplyEmail(params: {
         <p style="margin: 0 0 16px; font-size: 15px;">Hello ${params.requesterName},</p>
         <p style="margin: 0 0 20px; font-size: 14px; color: #64748b;"><strong>${params.agentName}</strong> has responded to your ticket:</p>
         <div style="background: #f8fafc; border-left: 4px solid #2563eb; padding: 18px; margin: 0 0 24px; border-radius: 0 6px 6px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; color: #0f172a;">${params.replyContent}</div>
+
+        <!-- Remote Assistance & Endpoint Box -->
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h4 style="margin: 0 0 6px; font-size: 14px; color: #166534; font-weight: 700;">
+            🖥️ Remote Technical Support (Zoho Assist & Kaseya VSA)
+          </h4>
+          <p style="margin: 0 0 10px; font-size: 13px; color: #15803d; line-height: 1.4;">
+            If your technician needs to view or control your screen to assist you, please join the secure session below:
+          </p>
+          <a href="${assistLink}" 
+             style="display: inline-block; background: #16a34a; color: #ffffff; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 6px; text-decoration: none;">
+            Join Zoho Assist Remote Session
+          </a>
+          <span style="display: block; margin-top: 8px; font-size: 11px; color: #166534; font-family: monospace;">
+            ${endpointInfo}
+          </span>
+        </div>
+
         <div style="margin: 24px 0 20px;">
           <a href="${params.appUrl}/tickets/${params.ticketNumber}" 
              style="display: inline-block; background: #2563eb; color: #ffffff; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 6px; text-decoration: none;">
@@ -124,7 +147,8 @@ export function agentReplyEmail(params: {
       </div>
     </div>
   `
-  return { subject, html, text: params.replyContent }
+  const text = `${params.replyContent}\n\n---\nRemote Support Session: ${assistLink}\n${endpointInfo}\nView ticket: ${params.appUrl}/tickets/${params.ticketNumber}`
+  return { subject, html, text }
 }
 
 export function ticketCreatedEmail(params: {
@@ -200,6 +224,8 @@ export function newReplyEmail(params: {
   replyPreview: string
   requesterName: string
   appUrl: string
+  zohoAssistUrl?: string
+  deviceHostname?: string
 }): { subject: string; html: string; text: string } {
   return agentReplyEmail({
     ticketNumber: params.ticketNumber,
@@ -208,5 +234,7 @@ export function newReplyEmail(params: {
     replyContent: params.replyPreview,
     requesterName: params.requesterName,
     appUrl: params.appUrl,
+    zohoAssistUrl: params.zohoAssistUrl,
+    deviceHostname: params.deviceHostname,
   })
 }
