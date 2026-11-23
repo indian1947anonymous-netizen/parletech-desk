@@ -69,7 +69,7 @@ export async function findSimilarTickets(
     }
   }
 
-  // Fetch historical tickets that have a documented resolution
+  // Fetch top 25 recent resolved tickets with minimal required fields for lightning-fast matching
   const historicalTickets = await prisma.ticket.findMany({
     where: {
       id: currentTicket.id ? { not: currentTicket.id } : undefined,
@@ -78,9 +78,23 @@ export async function findSimilarTickets(
         { status: { in: ['RESOLVED', 'CLOSED'] } },
       ],
     },
-    take: 200,
+    take: 25,
     orderBy: { createdAt: 'desc' },
-    include: {
+    select: {
+      id: true,
+      zohoTicketId: true,
+      ticketNumber: true,
+      subject: true,
+      description: true,
+      reportedSymptoms: true,
+      rootCause: true,
+      troubleshootingSteps: true,
+      resolution: true,
+      status: true,
+      createdAt: true,
+      resolvedAt: true,
+      closedAt: true,
+      updatedAt: true,
       agent: { select: { name: true, email: true } },
       requester: { select: { name: true, email: true } }
     }

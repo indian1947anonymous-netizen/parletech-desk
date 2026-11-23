@@ -12,22 +12,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params
-  try {
-    const ticket = await prisma.ticket.findFirst({
-      where: {
-        OR: [
-          { id },
-          { ticketNumber: id },
-          { zohoTicketId: id }
-        ]
-      },
-      select: { ticketNumber: true, subject: true, zohoTicketId: true },
-    })
-    if (!ticket) return { title: 'Ticket Not Found' }
-    return { title: `${ticket.zohoTicketId ? `#${ticket.zohoTicketId}` : ticket.ticketNumber} — ${ticket.subject}` }
-  } catch {
-    return { title: 'Ticket Details' }
-  }
+  return { title: `Ticket ${id} — ParleTech Desk` }
 }
 
 export default async function TicketDetailPage({ params }: PageProps) {
@@ -39,38 +24,52 @@ export default async function TicketDetailPage({ params }: PageProps) {
   let ticket: any = null
 
   try {
-    // Find ticket by cuid, ticketNumber (e.g. TKT-0558), or Zoho ticket ID
-    ticket = await prisma.ticket.findFirst({
-      where: {
-        OR: [
-          { id },
-          { ticketNumber: id },
-          { zohoTicketId: id }
-        ]
-      },
-      include: {
-        requester: { select: { id: true, name: true, email: true, jobTitle: true, department: true } },
-        customer: true,
-        agent: { select: { id: true, name: true, email: true, jobTitle: true } },
-        department: true,
-        slaPolicy: true,
-        comments: {
-          orderBy: { createdAt: 'asc' },
-          include: {
-            author: { select: { id: true, name: true, role: true, image: true } },
-            attachments: true,
-          },
-        },
-        attachments: true,
-        emailLogs: {
-          orderBy: { createdAt: 'desc' },
-        },
-        activities: {
-          orderBy: { createdAt: 'desc' },
-          include: { user: { select: { name: true } } },
+    // 1. Instant primary lookup by unique ID or ticket number
+    const isCuid = id.startsWith('c') && id.length > 20
+    const ticketInclude = {
+      requester: { select: { id: true, name: true, email: true, jobTitle: true, department: true } },
+      customer: true,
+      agent: { select: { id: true, name: true, email: true, jobTitle: true } },
+      department: true,
+      slaPolicy: true,
+      comments: {
+        orderBy: { createdAt: 'asc' as const },
+        include: {
+          author: { select: { id: true, name: true, role: true, image: true } },
+          attachments: true,
         },
       },
-    })
+      attachments: true,
+      emailLogs: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 25,
+      },
+      activities: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 30,
+        include: { user: { select: { name: true } } },
+      },
+    }
+
+    if (isCuid) {
+      ticket = await prisma.ticket.findUnique({
+        where: { id },
+        include: ticketInclude,
+      })
+    }
+
+    if (!ticket) {
+      ticket = await prisma.ticket.findFirst({
+        where: {
+          OR: [
+            { id },
+            { ticketNumber: id },
+            { zohoTicketId: id }
+          ]
+        },
+        include: ticketInclude,
+      })
+    }
   } catch (err: any) {
     console.error('Database error fetching ticket:', err)
   }
@@ -88,110 +87,116 @@ export default async function TicketDetailPage({ params }: PageProps) {
   const requesterName = ticket.customer?.name || ticket.requester?.name || ''
   const requesterId = ticket.requesterId
 
-  let agents: any[] = []
-  let departments: any[] = []
-  let requesterAssets: any[] = []
-  let requesterLicenses: any[] = []
-  let previousTickets: any[] = []
   let kaseyaDevice: any = ticket.kaseyaData || null
   let m365Account: any = ticket.m365Data || null
   let snipeAsset: any = ticket.snipeData || null
-  let similarTicketsResult: any = { hasMatches: false, message: '', matches: [] }
-  let aiAnalysis: any = null
-  let syncInfo: any = []
-  let allKaseyaDevices: any[] = []
 
-  // Load all data instantly from Supabase (5ms - zero blocking on slow external APIs)
-  try {
-    agents = await prisma.user.findMany({
+  // 2. Fetch all secondary auxiliary data concurrently in parallel
+  const [
+    agents,
+    departments,
+    allKaseyaDevices,
+    requesterAssets,
+    requesterLicenses,
+    previousTickets,
+    m365Found,
+    snipeFound,
+    syncInfo,
+    similarTicketsResult
+  ] = await Promise.all([
+    prisma.user.findMany({
       where: { role: { in: ['ADMIN', 'MANAGER', 'AGENT'] }, isActive: true },
       select: { id: true, name: true, email: true, jobTitle: true },
-    }).catch(() => [])
+    }).catch(() => []),
 
-    departments = await prisma.department.findMany({
+    prisma.department.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
-    }).catch(() => [])
+    }).catch(() => []),
 
-    // Load live Kaseya endpoints directly from database
-    allKaseyaDevices = await prisma.kaseyaDevice.findMany({
-      take: 100,
-      orderBy: { isOnline: 'desc' }
-    }).catch(() => [])
+    prisma.kaseyaDevice.findMany({
+      take: 40,
+      orderBy: { isOnline: 'desc' },
+      select: {
+        id: true,
+        hostname: true,
+        assignedUserName: true,
+        assignedUserEmail: true,
+        assetTag: true,
+        os: true,
+        isOnline: true,
+        lastCheckIn: true,
+        agentVersion: true,
+        antivirusStatus: true,
+        remoteSupportUrl: true,
+        zohoAssistUrl: true,
+      }
+    }).catch(() => []),
 
-    if (requesterId) {
-      requesterAssets = await prisma.assetAssignment.findMany({
-        where: { userId: requesterId, returnedAt: null },
-        include: { asset: true },
-      }).catch(() => [])
+    requesterId ? prisma.assetAssignment.findMany({
+      where: { userId: requesterId, returnedAt: null },
+      include: { asset: true },
+    }).catch(() => []) : Promise.resolve([]),
 
-      requesterLicenses = await prisma.licenseAssignment.findMany({
-        where: { userId: requesterId, revokedAt: null },
-        include: { license: true },
-      }).catch(() => [])
+    requesterId ? prisma.licenseAssignment.findMany({
+      where: { userId: requesterId, revokedAt: null },
+      include: { license: true },
+    }).catch(() => []) : Promise.resolve([]),
 
-      previousTickets = await prisma.ticket.findMany({
-        where: { requesterId },
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, ticketNumber: true, zohoTicketId: true, subject: true, status: true, priority: true, isVip: true },
-      }).catch(() => [])
-    }
+    requesterId ? prisma.ticket.findMany({
+      where: { requesterId },
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, ticketNumber: true, zohoTicketId: true, subject: true, status: true, priority: true, isVip: true },
+    }).catch(() => []) : Promise.resolve([]),
 
-    // Match Kaseya device: by assigned email, name, or Adam's workstation
-    if (!kaseyaDevice && allKaseyaDevices.length > 0) {
-      kaseyaDevice = allKaseyaDevices.find((d: any) =>
-        (requesterEmail && d.assignedUserEmail && d.assignedUserEmail.toLowerCase() === requesterEmail) ||
-        (requesterName && d.assignedUserName && d.assignedUserName.toLowerCase().includes(requesterName.toLowerCase())) ||
-        (d.hostname && d.hostname.toLowerCase().includes('adam')) ||
-        (d.assignedUserName && d.assignedUserName.toLowerCase().includes('adam'))
-      ) || allKaseyaDevices.find((d: any) => d.hostname === 'BL-W11-EXEC01') || allKaseyaDevices[0]
-    }
+    (!m365Account && requesterEmail) ? prisma.m365Account.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: requesterEmail },
+          { userPrincipalName: requesterEmail }
+        ]
+      }
+    }).catch(() => null) : Promise.resolve(null),
 
-    if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
-      kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
-    }
+    (!snipeAsset && (ticket.assetTag || requesterEmail)) ? prisma.asset.findFirst({
+      where: {
+        OR: [
+          { assetTag: ticket.assetTag || 'NON_MATCH' },
+          { notes: { contains: requesterEmail } }
+        ]
+      }
+    }).catch(() => null) : Promise.resolve(null),
 
-    if (!m365Account && requesterEmail) {
-      m365Account = await prisma.m365Account.findFirst({
-        where: {
-          OR: [
-            { primaryEmail: requesterEmail },
-            { userPrincipalName: requesterEmail }
-          ]
-        }
-      }).catch(() => null)
-    }
+    prisma.integrationSync.findMany().catch(() => []),
 
-    if (!snipeAsset && (ticket.assetTag || requesterEmail)) {
-      snipeAsset = await prisma.asset.findFirst({
-        where: {
-          OR: [
-            { assetTag: ticket.assetTag || 'NON_MATCH' },
-            { notes: { contains: requesterEmail } }
-          ]
-        }
-      }).catch(() => null)
-    }
-
-    syncInfo = await prisma.integrationSync.findMany().catch(() => [])
-  } catch (auxErr) {
-    console.warn('Non-fatal auxiliary data error in ticket detail:', auxErr)
-  }
-
-  // Similar historical tickets
-  try {
-    similarTicketsResult = await findSimilarTickets({
+    findSimilarTickets({
       id: ticket.id,
       subject: ticket.subject,
       description: ticket.description,
       category: ticket.category || undefined
-    }, 4)
-  } catch (simErr) {
-    console.warn('Similarity search error:', simErr)
+    }, 4).catch(() => ({ hasMatches: false, message: '', matches: [] }))
+  ])
+
+  if (!m365Account && m365Found) m365Account = m365Found
+  if (!snipeAsset && snipeFound) snipeAsset = snipeFound
+
+  // Match Kaseya device: by assigned email, name, or Adam's workstation
+  if (!kaseyaDevice && allKaseyaDevices.length > 0) {
+    kaseyaDevice = allKaseyaDevices.find((d: any) =>
+      (requesterEmail && d.assignedUserEmail && d.assignedUserEmail.toLowerCase() === requesterEmail) ||
+      (requesterName && d.assignedUserName && d.assignedUserName.toLowerCase().includes(requesterName.toLowerCase())) ||
+      (d.hostname && d.hostname.toLowerCase().includes('adam')) ||
+      (d.assignedUserName && d.assignedUserName.toLowerCase().includes('adam'))
+    ) || allKaseyaDevices.find((d: any) => d.hostname === 'BL-W11-EXEC01') || allKaseyaDevices[0]
   }
 
-  // AI Troubleshooting Analysis
+  if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
+    kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
+  }
+
+  // 3. AI Troubleshooting Analysis (runs instantly in memory)
+  let aiAnalysis: any = null
   try {
     aiAnalysis = generateAiTroubleshooting({
       ticket: {

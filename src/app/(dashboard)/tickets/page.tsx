@@ -220,6 +220,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                         <div className="flex items-center gap-1.5">
                           <Link
                             href={`/tickets/${ticket.id}`}
+                            prefetch={true}
                             className="font-bold text-xs text-blue-600 hover:text-blue-800 hover:underline"
                           >
                             {ticket.ticketNumber}
@@ -248,6 +249,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                       <td className="px-4 py-3 align-top">
                         <Link
                           href={`/tickets/${ticket.id}`}
+                          prefetch={true}
                           className="font-semibold text-slate-800 hover:text-blue-600 line-clamp-1 block leading-snug"
                           title={ticket.subject}
                         >

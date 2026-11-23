@@ -269,7 +269,7 @@ export default async function DashboardPage({
                       </div>
                     </td>
                     <td className="py-3 px-5">
-                      <Link href={`/tickets/${vt.id}`} className="font-bold text-blue-600 hover:underline">
+                      <Link href={`/tickets/${vt.id}`} prefetch={true} className="font-bold text-blue-600 hover:underline">
                         {vt.ticketNumber}
                       </Link>
                       {vt.zohoTicketId && (
@@ -414,7 +414,7 @@ export default async function DashboardPage({
                     {filteredTickets.map((t) => (
                       <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-5">
-                          <Link href={`/tickets/${t.id}`} className="font-bold text-blue-600 hover:underline">
+                          <Link href={`/tickets/${t.id}`} prefetch={true} className="font-bold text-blue-600 hover:underline">
                             {t.ticketNumber}
                           </Link>
                           {t.zohoTicketId && (
@@ -435,7 +435,7 @@ export default async function DashboardPage({
                           )}
                         </td>
                         <td className="py-3 px-5">
-                          <Link href={`/tickets/${t.id}`} className="font-semibold text-slate-900 hover:text-blue-600 truncate max-w-[240px] block" title={t.subject}>
+                          <Link href={`/tickets/${t.id}`} prefetch={true} className="font-semibold text-slate-900 hover:text-blue-600 truncate max-w-[240px] block" title={t.subject}>
                             {t.subject}
                           </Link>
                           <span className="text-[10px] text-slate-400">

@@ -233,9 +233,9 @@ export function TicketWorkspace({
       })
 
       toast.success(`Launching Kaseya Live Connect for ${hostname}...`)
-      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+      window.location.href = targetUrl
     } catch (e: any) {
-      window.open(targetUrl, '_blank')
+      window.location.href = targetUrl
     } finally {
       setConnectingKaseya(false)
     }
@@ -271,7 +271,7 @@ export function TicketWorkspace({
 
       setRemoteAssistOpen(true)
       toast.success(`Zoho Assist Session #${json.sessionId} generated! Opening technician console...`)
-      window.open(json.technicianUrl, '_blank', 'noopener,noreferrer,width=1280,height=800')
+      window.location.href = json.technicianUrl
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -1526,7 +1526,7 @@ export function TicketWorkspace({
                           >
                             <a
                               href={kaseyaDevice?.remoteSupportUrl || `https://parletechnologies.vsax.net/devices/${kaseyaDevice?.Identifier || kaseyaDevice?.hostname}`}
-                              target="_blank"
+                              target="_self"
                               rel="noreferrer"
                             >
                               <ExternalLink className="w-3.5 h-3.5 mr-1 text-blue-600" />
@@ -1635,7 +1635,7 @@ export function TicketWorkspace({
                             size="sm"
                             className="h-8 text-xs border-slate-300 text-slate-800 hover:bg-slate-100"
                           >
-                            <a href="https://parletechnologies.vsax.net/devices" target="_blank" rel="noreferrer">
+                            <a href="https://parletechnologies.vsax.net/devices" target="_self" rel="noreferrer">
                               <ExternalLink className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
                               <span>Open VSA X Portal</span>
                             </a>
@@ -1980,7 +1980,7 @@ export function TicketWorkspace({
                         variant="ghost"
                         className="w-full h-8 text-xs text-slate-600 hover:text-slate-900"
                       >
-                        <a href="https://parletechnologies.vsax.net/devices" target="_blank" rel="noreferrer">
+                        <a href="https://parletechnologies.vsax.net/devices" target="_self" rel="noreferrer">
                           <ExternalLink className="w-3.5 h-3.5 mr-1 text-slate-500" />
                           <span>Open VSA X Devices Portal</span>
                         </a>
@@ -2247,7 +2247,7 @@ export function TicketWorkspace({
                   </div>
                 </div>
                 <Button
-                  onClick={() => window.open(assistSession.technicianUrl, '_blank', 'noopener,noreferrer,width=1280,height=800')}
+                  onClick={() => { window.location.href = assistSession.technicianUrl }}
                   className="w-full h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
                 >
                   Launch Technician Session Viewer
