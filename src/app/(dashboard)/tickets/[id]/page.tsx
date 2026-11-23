@@ -31,20 +31,6 @@ export default async function TicketDetailPage({ params }: PageProps) {
   const { id } = await params
 
   let ticket: any = null
-  let agents: any[] = []
-  let departments: any[] = []
-  let requesterAssets: any[] = []
-  let requesterLicenses: any[] = []
-  let previousTickets: any[] = []
-  let kaseyaDevice: any = null
-  let m365Account: any = null
-  let snipeAsset: any = null
-  let similarTicketsResult: any = null
-  let aiAnalysis: any = null
-  let syncInfo: any = null
-  let zohoConversations: any[] = []
-  let kaseyaApiStatus: any = null
-  let allKaseyaDevices: any[] = []
 
   try {
     ticket = await prisma.ticket.findUnique({
@@ -72,100 +58,123 @@ export default async function TicketDetailPage({ params }: PageProps) {
         },
       },
     })
+  } catch (err: any) {
+    console.error('Database error fetching core ticket:', err)
+  }
 
-    if (!ticket) {
-      notFound()
+  if (!ticket) {
+    notFound()
+  }
+
+  // Role check: End users can only view their own tickets
+  if (session.user.role === 'END_USER' && ticket.requesterId !== session.user.id) {
+    redirect('/tickets')
+  }
+
+  const requesterEmail = ticket.customer?.email?.toLowerCase() || ticket.requester?.email?.toLowerCase() || ''
+  const requesterName = ticket.customer?.name || ticket.requester?.name || ''
+  const requesterId = ticket.requesterId
+
+  let agents: any[] = []
+  let departments: any[] = []
+  let requesterAssets: any[] = []
+  let requesterLicenses: any[] = []
+  let previousTickets: any[] = []
+  let kaseyaDevice: any = ticket.kaseyaData || null
+  let m365Account: any = ticket.m365Data || null
+  let snipeAsset: any = ticket.snipeData || null
+  let similarTicketsResult: any = { hasMatches: false, message: '', matches: [] }
+  let aiAnalysis: any = null
+  let syncInfo: any = null
+  let zohoConversations: any[] = []
+  let kaseyaApiStatus: any = null
+  let allKaseyaDevices: any[] = []
+
+  // Load auxiliary data with independent error handling so connection limits never crash the page
+  try {
+    agents = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'MANAGER', 'AGENT'] }, isActive: true },
+      select: { id: true, name: true, email: true, jobTitle: true },
+    }).catch(() => [])
+
+    departments = await prisma.department.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+    }).catch(() => [])
+
+    if (requesterId) {
+      requesterAssets = await prisma.assetAssignment.findMany({
+        where: { userId: requesterId, returnedAt: null },
+        include: { asset: true },
+      }).catch(() => [])
+
+      requesterLicenses = await prisma.licenseAssignment.findMany({
+        where: { userId: requesterId, revokedAt: null },
+        include: { license: true },
+      }).catch(() => [])
+
+      previousTickets = await prisma.ticket.findMany({
+        where: { requesterId },
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, ticketNumber: true, zohoTicketId: true, subject: true, status: true, priority: true, isVip: true },
+      }).catch(() => [])
     }
 
-    // Role check: End users can only view their own tickets
-    if (session.user.role === 'END_USER' && ticket.requesterId !== session.user.id) {
-      redirect('/tickets')
-    }
-
-    const requesterEmail = ticket.requester?.email?.toLowerCase() || ''
-    const requesterId = ticket.requesterId
-
-    const [allAgents, allDepts, userAssets, userLicenses, userTickets, dev, mAcc, ast, syncLogs] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: { in: ['ADMIN', 'MANAGER', 'AGENT'] }, isActive: true },
-        select: { id: true, name: true, email: true, jobTitle: true },
-      }),
-      prisma.department.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-      }),
-      requesterId
-        ? prisma.assetAssignment.findMany({
-            where: { userId: requesterId, returnedAt: null },
-            include: { asset: true },
-          })
-        : Promise.resolve([]),
-      requesterId
-        ? prisma.licenseAssignment.findMany({
-            where: { userId: requesterId, revokedAt: null },
-            include: { license: true },
-          })
-        : Promise.resolve([]),
-      requesterId
-        ? prisma.ticket.findMany({
-            where: { requesterId },
-            take: 5,
-            orderBy: { createdAt: 'desc' },
-            select: { id: true, ticketNumber: true, zohoTicketId: true, subject: true, status: true, priority: true, isVip: true },
-          })
-        : Promise.resolve([]),
-      prisma.kaseyaDevice.findFirst({
+    if (!kaseyaDevice) {
+      kaseyaDevice = await prisma.kaseyaDevice.findFirst({
         where: {
           OR: [
             ...(requesterEmail ? [{ assignedUserEmail: { equals: requesterEmail, mode: 'insensitive' as const } }] : []),
-            ...(ticket.requester?.name ? [{ assignedUserName: { contains: ticket.requester.name, mode: 'insensitive' as const } }] : []),
+            ...(requesterName ? [{ assignedUserName: { contains: requesterName, mode: 'insensitive' as const } }] : []),
             { hostname: ticket.deviceHostname || 'BL-W11-EXEC01' },
             { assetTag: ticket.assetTag || 'NON_MATCH' }
           ]
         }
-      }),
-      requesterEmail
-        ? prisma.m365Account.findFirst({
-            where: {
-              OR: [
-                { primaryEmail: requesterEmail },
-                { userPrincipalName: requesterEmail }
-              ]
-            }
-          })
-        : Promise.resolve(null),
-      ticket.assetTag || requesterEmail
-        ? prisma.asset.findFirst({
-            where: {
-              OR: [
-                { assetTag: ticket.assetTag || 'NON_MATCH' },
-                { notes: { contains: requesterEmail } }
-              ]
-            }
-          })
-        : Promise.resolve(null),
-      prisma.integrationSync.findMany()
-    ])
+      }).catch(() => null)
+    }
 
-    agents = allAgents
-    departments = allDepts
-    requesterAssets = userAssets
-    requesterLicenses = userLicenses
-    previousTickets = userTickets
-    kaseyaDevice = dev || ticket.kaseyaData
-    m365Account = mAcc || ticket.m365Data
-    snipeAsset = ast || ticket.snipeData
-    syncInfo = syncLogs
+    if (!m365Account && requesterEmail) {
+      m365Account = await prisma.m365Account.findFirst({
+        where: {
+          OR: [
+            { primaryEmail: requesterEmail },
+            { userPrincipalName: requesterEmail }
+          ]
+        }
+      }).catch(() => null)
+    }
 
-    // Fetch similar historical tickets
+    if (!snipeAsset && (ticket.assetTag || requesterEmail)) {
+      snipeAsset = await prisma.asset.findFirst({
+        where: {
+          OR: [
+            { assetTag: ticket.assetTag || 'NON_MATCH' },
+            { notes: { contains: requesterEmail } }
+          ]
+        }
+      }).catch(() => null)
+    }
+
+    syncInfo = await prisma.integrationSync.findMany().catch(() => [])
+  } catch (auxErr) {
+    console.warn('Non-fatal auxiliary data error in ticket detail:', auxErr)
+  }
+
+  // Similar historical tickets
+  try {
     similarTicketsResult = await findSimilarTickets({
       id: ticket.id,
       subject: ticket.subject,
       description: ticket.description,
       category: ticket.category || undefined
     }, 4)
+  } catch (simErr) {
+    console.warn('Similarity search error:', simErr)
+  }
 
-    // Generate AI troubleshooting
+  // AI Troubleshooting
+  try {
     aiAnalysis = generateAiTroubleshooting({
       ticket: {
         ticketNumber: ticket.ticketNumber,
@@ -174,59 +183,57 @@ export default async function TicketDetailPage({ params }: PageProps) {
         description: ticket.description,
         priority: ticket.priority,
         isVip: ticket.isVip,
-        requesterName: ticket.requester?.name || undefined,
+        requesterName: requesterName || undefined,
         requesterEmail
       },
       kaseyaData: kaseyaDevice,
       snipeData: snipeAsset,
       m365Data: m365Account,
-      similarTickets: similarTicketsResult.matches
+      similarTickets: similarTicketsResult?.matches || []
     })
+  } catch (aiErr) {
+    console.warn('AI Analysis error:', aiErr)
+  }
 
-    // Fetch live Zoho Desk conversations and thread history (Requirement 5)
-    if (ticket.zohoTicketId) {
-      try {
-        const { zohoDeskService } = await import('@/lib/integrations/zoho')
-        zohoConversations = await zohoDeskService.fetchTicketConversations(ticket.zohoTicketId)
-      } catch (err) {
-        console.error('Failed to fetch Zoho Desk conversations:', err)
-      }
-    }
-
-    // Query live Kaseya VSA X REST API v3 for real user endpoint
+  // Live Zoho Desk conversations
+  if (ticket.zohoTicketId) {
     try {
-      const { kaseyaService } = await import('@/lib/integrations/kaseya')
-      const liveKaseya = await kaseyaService.fetchLiveDeviceForUser({
-        userEmail: requesterEmail,
-        userName: ticket.requester?.name || ticket.customer?.name,
-        company: ticket.company || ticket.customer?.name,
-        ticketSubject: ticket.subject,
-        ticketDescription: ticket.description,
-        assetTag: ticket.assetTag
-      })
-      kaseyaApiStatus = liveKaseya.apiStatus
-      allKaseyaDevices = liveKaseya.allDevices || []
-
-      if (liveKaseya.device) {
-        kaseyaDevice = liveKaseya.device
-      } else if (!kaseyaDevice && allKaseyaDevices.length > 0) {
-        // Fallback: match Adam's PC or first available device so remote assist is never blank
-        kaseyaDevice = allKaseyaDevices.find((d: any) =>
-          (d.Name && d.Name.toLowerCase().includes('adam')) ||
-          (d.PrimaryUserName && d.PrimaryUserName.toLowerCase().includes('adam')) ||
-          (d.hostname && d.hostname.toLowerCase().includes('adam'))
-        ) || allKaseyaDevices[0]
-      }
-
-      if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
-        kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
-      }
-    } catch (kErr) {
-      console.error('Kaseya live API fetch error:', kErr)
+      const { zohoDeskService } = await import('@/lib/integrations/zoho')
+      zohoConversations = await zohoDeskService.fetchTicketConversations(ticket.zohoTicketId)
+    } catch (err) {
+      console.warn('Failed to fetch Zoho Desk conversations:', err)
     }
-  } catch (e) {
-    console.error('Error fetching ticket details:', e)
-    notFound()
+  }
+
+  // Query live Kaseya VSA X REST API v3
+  try {
+    const { kaseyaService } = await import('@/lib/integrations/kaseya')
+    const liveKaseya = await kaseyaService.fetchLiveDeviceForUser({
+      userEmail: requesterEmail,
+      userName: requesterName,
+      company: ticket.company || ticket.customer?.name,
+      ticketSubject: ticket.subject,
+      ticketDescription: ticket.description,
+      assetTag: ticket.assetTag
+    })
+    kaseyaApiStatus = liveKaseya.apiStatus
+    allKaseyaDevices = liveKaseya.allDevices || []
+
+    if (liveKaseya.device) {
+      kaseyaDevice = liveKaseya.device
+    } else if (!kaseyaDevice && allKaseyaDevices.length > 0) {
+      kaseyaDevice = allKaseyaDevices.find((d: any) =>
+        (d.Name && d.Name.toLowerCase().includes('adam')) ||
+        (d.PrimaryUserName && d.PrimaryUserName.toLowerCase().includes('adam')) ||
+        (d.hostname && d.hostname.toLowerCase().includes('adam'))
+      ) || allKaseyaDevices[0]
+    }
+
+    if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
+      kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
+    }
+  } catch (kErr) {
+    console.warn('Kaseya live API fetch error:', kErr)
   }
 
   return (

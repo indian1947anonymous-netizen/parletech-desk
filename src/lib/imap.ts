@@ -12,23 +12,17 @@ interface ImapConfig {
 }
 
 export async function getImapConfig(): Promise<ImapConfig | null> {
-  const [emailSetting, passSetting, hostSetting, portSetting] = await Promise.all([
-    prisma.systemSetting.findUnique({ where: { key: 'gmail_email' } }),
-    prisma.systemSetting.findUnique({ where: { key: 'gmail_app_password' } }),
-    prisma.systemSetting.findUnique({ where: { key: 'imap_host' } }),
-    prisma.systemSetting.findUnique({ where: { key: 'imap_port' } }),
-  ])
-
-  const user = emailSetting?.value || process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
-  const pass = passSetting?.value || process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
+  // Use environment variables directly to eliminate unnecessary DB queries on every poll
+  const user = process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
 
   if (!user || !pass) {
     return null
   }
 
   return {
-    host: hostSetting?.value || process.env.IMAP_HOST || 'imap.gmail.com',
-    port: parseInt(portSetting?.value || process.env.IMAP_PORT || '993'),
+    host: process.env.IMAP_HOST || 'imap.gmail.com',
+    port: parseInt(process.env.IMAP_PORT || '993'),
     user,
     pass,
     secure: true,

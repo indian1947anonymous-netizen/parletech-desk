@@ -40,9 +40,10 @@ export function TicketFilters({ departments, agents }: Props) {
     }
   }
 
-  // Auto-poll Gmail every 3-4 seconds automatically
+  // Auto-poll Gmail every 20 seconds when tab is active
   useEffect(() => {
     const checkMail = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
       fetch('/api/email/poll', { method: 'POST' })
         .then(r => r.json())
         .then(d => {
@@ -54,11 +55,7 @@ export function TicketFilters({ departments, agents }: Props) {
         .catch(() => {})
     }
 
-    // Run immediately on page load
-    checkMail()
-
-    // Interval every 4 seconds
-    const interval = setInterval(checkMail, 4000)
+    const interval = setInterval(checkMail, 20000)
     return () => clearInterval(interval)
   }, [router])
 
