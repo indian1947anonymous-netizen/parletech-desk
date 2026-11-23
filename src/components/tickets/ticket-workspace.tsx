@@ -44,6 +44,7 @@ import {
 import { toast } from 'sonner'
 import { SimilarTicketMatch, SimilarityResult } from '@/lib/integrations/similarity'
 import { AiTroubleshootingAnalysis } from '@/lib/integrations/ai-troubleshooter'
+import { EngineerToolboxModal } from './engineer-toolbox-modal'
 
 interface TicketWorkspaceProps {
   ticket: any
@@ -128,6 +129,20 @@ export function TicketWorkspace({
     customerUrl: string
     technicianUrl: string
   } | null>(null)
+
+  // Engineer Super Toolbox Modal State
+  const [engineerToolboxOpen, setEngineerToolboxOpen] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey && e.key.toLowerCase() === 't') || (e.metaKey && e.shiftKey && e.key.toLowerCase() === 't')) {
+        e.preventDefault()
+        setEngineerToolboxOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Stopwatch Timer State
   const [timerRunning, setTimerRunning] = useState(false)
@@ -634,6 +649,16 @@ export function TicketWorkspace({
                 <Radio className="h-3.5 w-3.5" />
               )}
               <span>Zoho Assist</span>
+            </Button>
+
+            {/* Engineer Super Toolbox Modal Button */}
+            <Button
+              onClick={() => setEngineerToolboxOpen(true)}
+              className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold h-8.5 px-3 flex items-center gap-1.5 shadow-xs"
+              title="Open Engineer Super Toolbox (Alt + T)"
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              <span>Super Toolbox</span>
             </Button>
 
             {/* Primary Action Button: « Reply All ▾ */}
@@ -2317,6 +2342,21 @@ export function TicketWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 7. ENGINEER SUPER TOOLBOX MODAL */}
+      <EngineerToolboxModal
+        open={engineerToolboxOpen}
+        onOpenChange={setEngineerToolboxOpen}
+        ticket={ticket}
+        kaseyaDevice={kaseyaDevice}
+        allKaseyaDevices={allKaseyaDevices}
+        aiAnalysis={aiAnalysis}
+        onInsertReply={(text: string) => {
+          setReplyContent(prev => prev ? `${prev}\n\n${text}` : text)
+          openComposer('PUBLIC_REPLY')
+        }}
+        onRefreshTicket={() => router.refresh()}
+      />
     </div>
   )
 }
