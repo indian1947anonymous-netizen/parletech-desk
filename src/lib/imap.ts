@@ -19,7 +19,6 @@ export async function getImapConfig(): Promise<ImapConfig | null> {
     prisma.systemSetting.findUnique({ where: { key: 'imap_port' } }),
   ])
 
-  // Also check environment variables as fallback
   const user = emailSetting?.value || process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
   const pass = passSetting?.value || process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
 
@@ -49,7 +48,7 @@ export async function pollGmailInbox() {
     isPolling = false
     return {
       success: false,
-      error: 'Gmail/IMAP settings not configured. Please enter your Gmail address and App Password in Settings.',
+      error: 'Gmail/IMAP settings not configured.',
     }
   }
 
@@ -65,7 +64,7 @@ export async function pollGmailInbox() {
     emitLogs: false,
   })
 
-  // Catch socket error events so they never throw unhandled exceptions
+  // Prevent uncaught errors on socket
   client.on('error', (err) => {
     console.warn('[Gmail IMAP Socket Warning]:', err?.message || err)
   })
@@ -76,45 +75,35 @@ export async function pollGmailInbox() {
   try {
     await client.connect()
 
-    // 1. Download unseen messages first and mark as Seen immediately
-    const targetFolders = ['INBOX', '[Gmail]/Spam']
+    const lock = await client.getMailboxLock('INBOX')
+    try {
+      const status = await client.status('INBOX', { messages: true })
+      const totalMessages = (status && typeof status === 'object' && status.messages) ? status.messages : 0
 
-    for (const folder of targetFolders) {
-      try {
-        const lock = await client.getMailboxLock(folder)
-        try {
-          const unseenUids = await client.search({ seen: false }, { uid: true })
-          if (unseenUids && unseenUids.length > 0) {
-            const targetUids = unseenUids.slice(-15)
-            for (const uid of targetUids) {
-              try {
-                for await (const message of client.fetch(String(uid), { source: true, uid: true }, { uid: true })) {
-                  if (message.source) {
-                    rawMessagesToProcess.push({
-                      source: Buffer.from(message.source),
-                      folder
-                    })
-                    // Mark as seen on IMAP so it is not processed twice
-                    await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true })
-                  }
-                }
-              } catch (fetchErr: any) {
-                console.warn(`Error fetching UID ${uid} from ${folder}:`, fetchErr.message)
-              }
-            }
+      if (totalMessages > 0) {
+        // Fetch the newest 15 messages by sequence number (instantaneous, 0.1s)
+        const startSeq = Math.max(1, totalMessages - 15)
+        const fetchRange = `${startSeq}:*`
+
+        for await (const message of client.fetch(fetchRange, { source: true, flags: true, uid: true })) {
+          // If message is unread, download and mark read immediately
+          if (!message.flags?.has('\\Seen') && message.source) {
+            rawMessagesToProcess.push({
+              source: Buffer.from(message.source),
+              folder: 'INBOX'
+            })
+            await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true }).catch(() => {})
           }
-        } finally {
-          lock.release()
         }
-      } catch (folderErr: any) {
-        console.warn(`Could not poll folder ${folder}:`, folderErr.message)
       }
+    } finally {
+      lock.release()
     }
 
-    // Safely logout from IMAP before processing and sending SMTP replies
+    // Safely disconnect IMAP before processing and sending SMTP replies
     await client.logout().catch(() => {})
 
-    // 2. Process all collected messages safely outside of IMAP lock
+    // Process all downloaded messages outside of IMAP lock
     for (const item of rawMessagesToProcess) {
       try {
         const parsed = await simpleParser(item.source)

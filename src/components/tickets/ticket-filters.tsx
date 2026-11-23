@@ -40,17 +40,26 @@ export function TicketFilters({ departments, agents }: Props) {
     }
   }
 
-  // Auto-poll on component mount
+  // Auto-poll Gmail every 3-4 seconds automatically
   useEffect(() => {
-    fetch('/api/email/poll', { method: 'POST' })
-      .then(r => r.json())
-      .then(d => {
-        if (d?.processedCount > 0) {
-          toast.success(`Auto-synced ${d.processedCount} new email(s)!`)
-          router.refresh()
-        }
-      })
-      .catch(() => {})
+    const checkMail = () => {
+      fetch('/api/email/poll', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.processedCount > 0) {
+            toast.success(`⚡ Auto-synced ${d.processedCount} new email(s)!`)
+            router.refresh()
+          }
+        })
+        .catch(() => {})
+    }
+
+    // Run immediately on page load
+    checkMail()
+
+    // Interval every 4 seconds
+    const interval = setInterval(checkMail, 4000)
+    return () => clearInterval(interval)
   }, [router])
 
   const updateFilter = useCallback((key: string, value: string) => {
