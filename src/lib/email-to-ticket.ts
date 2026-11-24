@@ -56,79 +56,93 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       }
     }
 
-    // 2. Check for ticket thread ID in subject: e.g. [TKT-0001] or TKT-0001
-    const ticketNumberMatch = subject.match(/TKT-\d{4}/i)
+    // 2. Check for ticket thread ID in subject: e.g. [TKT-0001], TKT-0558 or inReplyTo
+    let existingTicket: any = null
+    const ticketNumberMatch = subject.match(/TKT-\d+/i)
 
     if (ticketNumberMatch) {
       const ticketNumber = ticketNumberMatch[0].toUpperCase()
-      const existingTicket = await prisma.ticket.findUnique({
+      existingTicket = await prisma.ticket.findUnique({
         where: { ticketNumber },
         include: { requester: true, customer: true },
       })
+    }
 
-      if (existingTicket) {
-        // Find author user
-        const authorUser = await prisma.user.findUnique({ where: { email: senderEmail } })
-        const fallbackAdmin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
-        const authorId = authorUser?.id || existingTicket.requesterId || fallbackAdmin?.id || ''
+    if (!existingTicket && email.inReplyTo) {
+      const matchingLog = await prisma.emailLog.findFirst({
+        where: { messageId: email.inReplyTo, ticketId: { not: null } },
+        include: { ticket: { include: { requester: true, customer: true } } }
+      })
+      if (matchingLog?.ticket) {
+        existingTicket = matchingLog.ticket
+      }
+    }
 
-        // Add reply to ticket
-        await prisma.ticketComment.create({
-          data: {
-            ticketId: existingTicket.id,
-            authorId,
-            content: `[Received via Email from ${senderName} <${senderEmail}>]\n\n${bodyContent}`,
-            type: 'PUBLIC_REPLY',
-          },
-        })
+    if (existingTicket) {
+      // Strip quoted email thread to keep customer reply clean
+      const cleanReply = bodyContent.split(/\r?\nOn .* wrote:|\r?\n---* Original Message ---*|\r?\nFrom:.*Sent:|\r?\n_{5,}/i)[0].trim() || bodyContent
 
-        // Reopen ticket if it was resolved or waiting
-        const newStatus = existingTicket.status === 'RESOLVED' || existingTicket.status === 'CLOSED'
-          ? 'OPEN'
-          : existingTicket.status === 'WAITING_FOR_CUSTOMER'
-          ? 'IN_PROGRESS'
-          : existingTicket.status
+      // Find author user
+      const authorUser = await prisma.user.findUnique({ where: { email: senderEmail } })
+      const fallbackAdmin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+      const authorId = authorUser?.id || existingTicket.requesterId || fallbackAdmin?.id || ''
 
-        await prisma.ticket.update({
-          where: { id: existingTicket.id },
-          data: {
-            status: newStatus,
-            updatedAt: new Date(),
-          },
-        })
+      // Add reply to ticket
+      await prisma.ticketComment.create({
+        data: {
+          ticketId: existingTicket.id,
+          authorId,
+          content: `[Received via Email from ${senderName} <${senderEmail}>]\n\n${cleanReply}`,
+          type: 'PUBLIC_REPLY',
+        },
+      })
 
-        await prisma.ticketActivity.create({
-          data: {
-            ticketId: existingTicket.id,
-            userId: authorId,
-            action: 'REPLIED',
-            description: `New email reply received from ${senderEmail}`,
-          },
-        })
+      // Reopen ticket if it was resolved or waiting
+      const newStatus = existingTicket.status === 'RESOLVED' || existingTicket.status === 'CLOSED'
+        ? 'OPEN'
+        : existingTicket.status === 'WAITING_FOR_CUSTOMER'
+        ? 'IN_PROGRESS'
+        : existingTicket.status
 
-        // Log inbound email into EmailLog
-        await prisma.emailLog.create({
-          data: {
-            direction: 'INBOUND',
-            from: rawFrom,
-            to: recipientTo || 'support@parletech.com',
-            subject,
-            body: bodyContent,
-            htmlBody: email.html,
-            ticketId: existingTicket.id,
-            ticketNumber: existingTicket.ticketNumber,
-            messageId: email.messageId,
-            inReplyTo: email.inReplyTo,
-            status: 'DELIVERED',
-          },
-        }).catch(console.error)
+      await prisma.ticket.update({
+        where: { id: existingTicket.id },
+        data: {
+          status: newStatus,
+          updatedAt: new Date(),
+        },
+      })
 
-        return {
-          success: true,
-          action: 'REPLY_ADDED',
+      await prisma.ticketActivity.create({
+        data: {
+          ticketId: existingTicket.id,
+          userId: authorId,
+          action: 'REPLIED',
+          description: `New email reply received from ${senderEmail}`,
+        },
+      })
+
+      // Log inbound email into EmailLog
+      await prisma.emailLog.create({
+        data: {
+          direction: 'INBOUND',
+          from: rawFrom,
+          to: recipientTo || 'support@parletech.com',
+          subject,
+          body: cleanReply,
+          htmlBody: email.html,
           ticketId: existingTicket.id,
           ticketNumber: existingTicket.ticketNumber,
-        }
+          messageId: email.messageId,
+          inReplyTo: email.inReplyTo,
+          status: 'DELIVERED',
+        },
+      }).catch(console.error)
+
+      return {
+        success: true,
+        action: 'REPLY_ADDED',
+        ticketId: existingTicket.id,
+        ticketNumber: existingTicket.ticketNumber,
       }
     }
 
@@ -183,31 +197,6 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
     }
 
     // Correlate with Kaseya endpoint device using email or name (e.g. Adam)
-    const lowerName = senderName.toLowerCase()
-    const lowerEmail = senderEmail.toLowerCase()
-
-    let kaseyaDev = await prisma.kaseyaDevice.findFirst({
-      where: {
-        OR: [
-          { assignedUserEmail: { equals: lowerEmail, mode: 'insensitive' as const } },
-          { assignedUserName: { contains: senderName, mode: 'insensitive' as const } },
-          { hostname: { contains: senderName.replace(/\s+/g, '-'), mode: 'insensitive' as const } },
-          ...(lowerName.includes('adam') || subject.toLowerCase().includes('adam') ? [
-            { assignedUserName: { contains: 'Adam', mode: 'insensitive' as const } },
-            { hostname: { contains: 'ADAM', mode: 'insensitive' as const } },
-            { hostname: 'BL-W11-EXEC01' }
-          ] : [])
-        ]
-      }
-    })
-
-    // Fallback device so Kaseya Live Connect is always ready
-    if (!kaseyaDev) {
-      kaseyaDev = await prisma.kaseyaDevice.findFirst({
-        where: { hostname: 'BL-W11-EXEC01' }
-      })
-    }
-
     // Generate ticket number
     const count = await prisma.ticket.count()
     const ticketNumber = `TKT-${String(count + 1).padStart(4, '0')}`
@@ -222,6 +211,7 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
       ? new Date(now.getTime() + defaultSla.resolutionTimeHours * 3600 * 1000)
       : new Date(now.getTime() + 24 * 3600 * 1000)
 
+    // For Gmail tickets: Do NOT set device name, Kaseya, or Zoho Assist (only Zoho tickets have them)
     const ticket = await prisma.ticket.create({
       data: {
         ticketNumber,
@@ -230,17 +220,8 @@ export async function processIncomingEmail(email: IncomingEmailPayload) {
         priority: 'MEDIUM',
         status: 'OPEN',
         source: 'EMAIL',
-        deviceHostname: kaseyaDev?.hostname || null,
-        kaseyaData: kaseyaDev ? {
-          hostname: kaseyaDev.hostname,
-          assignedUser: kaseyaDev.assignedUserName,
-          os: kaseyaDev.os,
-          lastCheckIn: kaseyaDev.lastCheckIn.toISOString(),
-          isOnline: kaseyaDev.isOnline,
-          antivirusStatus: kaseyaDev.antivirusStatus,
-          remoteSupportUrl: kaseyaDev.remoteSupportUrl,
-          zohoAssistUrl: kaseyaDev.zohoAssistUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(senderEmail)}`
-        } as any : undefined,
+        deviceHostname: null,
+        kaseyaData: undefined,
         department: assignedDepartmentId ? { connect: { id: assignedDepartmentId } } : undefined,
         customer: customer?.id ? { connect: { id: customer.id } } : undefined,
         requester: user?.id ? { connect: { id: user.id } } : undefined,

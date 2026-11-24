@@ -259,7 +259,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                           <span>{ticket.channel || 'Email'}</span>
                           <span>•</span>
                           <span>{ticket._count?.comments || 0} message{ticket._count?.comments === 1 ? '' : 's'}</span>
-                          {ticket.deviceHostname && (
+                          {ticket.deviceHostname && ticket.zohoTicketId && (
                             <>
                               <span>•</span>
                               <span className="text-blue-600 font-mono font-medium flex items-center gap-1">

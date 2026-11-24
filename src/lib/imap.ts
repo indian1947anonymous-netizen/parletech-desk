@@ -12,7 +12,6 @@ interface ImapConfig {
 }
 
 export async function getImapConfig(): Promise<ImapConfig | null> {
-  // Use environment variables directly to eliminate unnecessary DB queries on every poll
   const user = process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
   const pass = process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
 
@@ -30,6 +29,15 @@ export async function getImapConfig(): Promise<ImapConfig | null> {
 }
 
 let isPolling = false
+
+// Senders that are automated system/dev alerts and should not generate help desk tickets
+const IGNORED_AUTOMATED_SENDERS = [
+  'no-reply@render.com',
+  'notifications@vercel.com',
+  'mailer-daemon@googlemail.com',
+  'mailer-daemon@gmail.com',
+  'writersupport@medium.com',
+]
 
 export async function pollGmailInbox() {
   if (isPolling) {
@@ -69,23 +77,51 @@ export async function pollGmailInbox() {
   try {
     await client.connect()
 
+    // 1. Fetch recent logged message IDs to prevent duplicate processing
+    const existingLogs = await prisma.emailLog.findMany({
+      where: { messageId: { not: null } },
+      select: { messageId: true },
+      take: 200,
+      orderBy: { createdAt: 'desc' },
+    }).catch(() => [])
+    const loggedMessageIds = new Set(existingLogs.map(l => l.messageId).filter(Boolean))
+
     const lock = await client.getMailboxLock('INBOX')
     try {
       const status = await client.status('INBOX', { messages: true })
       const totalMessages = (status && typeof status === 'object' && status.messages) ? status.messages : 0
 
       if (totalMessages > 0) {
-        // Fetch the newest 15 messages by sequence number (instantaneous, 0.1s)
-        const startSeq = Math.max(1, totalMessages - 15)
+        // Fetch newest 25 messages
+        const startSeq = Math.max(1, totalMessages - 25)
         const fetchRange = `${startSeq}:*`
 
-        for await (const message of client.fetch(fetchRange, { source: true, flags: true, uid: true })) {
-          // If message is unread, download and mark read immediately
-          if (!message.flags?.has('\\Seen') && message.source) {
+        for await (const message of client.fetch(fetchRange, { source: true, flags: true, uid: true, envelope: true })) {
+          const msgId = message.envelope?.messageId
+          const sender = message.envelope?.from?.[0]?.address?.toLowerCase() || ''
+
+          // Skip if from our own mailbox
+          if (sender === config.user.toLowerCase()) {
+            continue
+          }
+
+          // Skip known automated notification spams
+          if (IGNORED_AUTOMATED_SENDERS.some(ign => sender.includes(ign))) {
+            continue
+          }
+
+          // If this email was already processed and logged into the database, skip
+          if (msgId && loggedMessageIds.has(msgId)) {
+            continue
+          }
+
+          // If message has source, queue for processing
+          if (message.source) {
             rawMessagesToProcess.push({
               source: Buffer.from(message.source),
               folder: 'INBOX'
             })
+            // Mark as seen on IMAP
             await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen'], { uid: true }).catch(() => {})
           }
         }
@@ -94,7 +130,7 @@ export async function pollGmailInbox() {
       lock.release()
     }
 
-    // Safely disconnect IMAP before processing and sending SMTP replies
+    // Safely disconnect IMAP before processing and sending replies
     await client.logout().catch(() => {})
 
     // Process all downloaded messages outside of IMAP lock

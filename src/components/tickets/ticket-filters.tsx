@@ -55,7 +55,7 @@ export function TicketFilters({ departments, agents }: Props) {
         .catch(() => {})
     }
 
-    const interval = setInterval(checkMail, 20000)
+    const interval = setInterval(checkMail, 4000)
     return () => clearInterval(interval)
   }, [router])
 

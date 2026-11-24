@@ -162,6 +162,22 @@ export function TicketWorkspace({
     }
   }, [timerRunning])
 
+  // Auto-sync incoming emails while viewing ticket (sub-second responsiveness)
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      fetch('/api/email/poll', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.processedCount > 0) {
+            router.refresh()
+          }
+        })
+        .catch(() => {})
+    }, 4000)
+    return () => clearInterval(pollInterval)
+  }, [router])
+
   const formatTimer = (secs: number) => {
     const hrs = Math.floor(secs / 3600).toString().padStart(2, '0')
     const mins = Math.floor((secs % 3600) / 60).toString().padStart(2, '0')
@@ -233,9 +249,9 @@ export function TicketWorkspace({
       })
 
       toast.success(`Launching Kaseya Live Connect for ${hostname}...`)
-      window.location.href = targetUrl
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
     } catch (e: any) {
-      window.location.href = targetUrl
+      window.open(targetUrl, '_blank')
     } finally {
       setConnectingKaseya(false)
     }
@@ -271,7 +287,7 @@ export function TicketWorkspace({
 
       setRemoteAssistOpen(true)
       toast.success(`Zoho Assist Session #${json.sessionId} generated! Opening technician console...`)
-      window.location.href = json.technicianUrl
+      window.open(json.technicianUrl, '_blank', 'noopener,noreferrer,width=1280,height=800')
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -621,35 +637,39 @@ export function TicketWorkspace({
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-2 self-start lg:self-center shrink-0">
-            {/* Direct Connect using Kaseya */}
-            <Button
-              onClick={handleConnectKaseya}
-              disabled={connectingKaseya}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8.5 px-3 flex items-center gap-1.5 shadow-xs"
-              title="Connect to Requester's Device via Kaseya Live Connect"
-            >
-              {connectingKaseya ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Monitor className="h-3.5 w-3.5" />
-              )}
-              <span>Connect via Kaseya</span>
-            </Button>
+            {/* Direct Connect using Kaseya (Zoho tickets only) */}
+            {ticket.zohoTicketId && (
+              <>
+                <Button
+                  onClick={handleConnectKaseya}
+                  disabled={connectingKaseya}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8.5 px-3 flex items-center gap-1.5 shadow-xs"
+                  title="Connect to Requester's Device via Kaseya Live Connect"
+                >
+                  {connectingKaseya ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Monitor className="h-3.5 w-3.5" />
+                  )}
+                  <span>Connect via Kaseya</span>
+                </Button>
 
-            {/* Start Zoho Assist Remote Support Session */}
-            <Button
-              onClick={handleStartZohoAssist}
-              disabled={startingAssist}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold h-8.5 px-3 flex items-center gap-1.5 shadow-xs"
-              title="Launch Live Remote Support Session via Zoho Assist (Enterprise Edition)"
-            >
-              {startingAssist ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Radio className="h-3.5 w-3.5" />
-              )}
-              <span>Zoho Assist</span>
-            </Button>
+                {/* Start Zoho Assist Remote Support Session */}
+                <Button
+                  onClick={handleStartZohoAssist}
+                  disabled={startingAssist}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold h-8.5 px-3 flex items-center gap-1.5 shadow-xs"
+                  title="Launch Live Remote Support Session via Zoho Assist (Enterprise Edition)"
+                >
+                  {startingAssist ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Radio className="h-3.5 w-3.5" />
+                  )}
+                  <span>Zoho Assist</span>
+                </Button>
+              </>
+            )}
 
             {/* Engineer Super Toolbox Modal Button */}
             <Button
@@ -784,19 +804,21 @@ export function TicketWorkspace({
             <ChevronDown className="h-3 w-3" />
           </button>
 
-          {/* Kaseya Endpoint Live Connect Tab */}
-          <button
-            onClick={() => setActiveTab('kaseya_telemetry')}
-            className={`py-3 px-2 border-b-2 tracking-wide uppercase transition-colors flex items-center gap-1.5 ${
-              activeTab === 'kaseya_telemetry'
-                ? 'border-blue-600 text-blue-600 font-bold'
-                : 'border-transparent text-blue-700/80 hover:text-blue-900 hover:border-blue-200'
-            }`}
-          >
-            <Monitor className="h-3.5 w-3.5 text-blue-600" />
-            <span>KASEYA VSA {kaseyaDevice ? `(${kaseyaDevice.hostname || 'ONLINE'})` : `(${allKaseyaDevices.length || 95} ENDPOINTS)`}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${kaseyaDevice ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
-          </button>
+          {/* Kaseya Endpoint Live Connect Tab (Zoho tickets only) */}
+          {ticket.zohoTicketId && (
+            <button
+              onClick={() => setActiveTab('kaseya_telemetry')}
+              className={`py-3 px-2 border-b-2 tracking-wide uppercase transition-colors flex items-center gap-1.5 ${
+                activeTab === 'kaseya_telemetry'
+                  ? 'border-blue-600 text-blue-600 font-bold'
+                  : 'border-transparent text-blue-700/80 hover:text-blue-900 hover:border-blue-200'
+              }`}
+            >
+              <Monitor className="h-3.5 w-3.5 text-blue-600" />
+              <span>KASEYA VSA {kaseyaDevice ? `(${kaseyaDevice.hostname || 'ONLINE'})` : `(${allKaseyaDevices.length || 95} ENDPOINTS)`}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${kaseyaDevice ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('resolution')}
@@ -883,97 +905,99 @@ export function TicketWorkspace({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start max-w-[1600px] mx-auto">
           {/* Center Column: Conversations / Active Tab Content */}
           <div className={`${showSidePanel ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} space-y-6`}>
-            {/* UNIFIED REMOTE ENDPOINT & CONTROL BANNER (Kaseya Live Connect & Zoho Assist) */}
-            <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-blue-400/30">
-                      User Endpoint PC
-                    </span>
-                    <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Live RMM Connected
-                    </span>
-                    <span className="text-[11px] text-slate-300 font-mono">
-                      Group: {kaseyaDevice?.GroupName || ticket.company || 'Better Lending'}
-                    </span>
+            {/* UNIFIED REMOTE ENDPOINT & CONTROL BANNER (Zoho Desk tickets only) */}
+            {ticket.zohoTicketId && (
+              <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-blue-400/30">
+                        User Endpoint PC
+                      </span>
+                      <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        Live RMM Connected
+                      </span>
+                      <span className="text-[11px] text-slate-300 font-mono">
+                        Group: {kaseyaDevice?.GroupName || ticket.company || 'Better Lending'}
+                      </span>
+                    </div>
+
+                    <h3 className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                      <span>{kaseyaDevice ? (kaseyaDevice.Name || kaseyaDevice.hostname) : `${ticket.requester?.name || 'User'}'s PC`}</span>
+                      <span className="text-xs font-normal text-slate-300">
+                        ({ticket.requester?.name || 'Requester'} • {ticket.requester?.email || 'user@company.com'})
+                      </span>
+                    </h3>
+
+                    <p className="text-xs text-slate-300">
+                      OS: <strong className="text-white">{kaseyaDevice?.os || 'Windows 11'}</strong> • IP: <strong className="text-white">{kaseyaDevice?.ipAddress || 'Active Dynamic IP'}</strong> • Status: <strong className="text-emerald-400">Online</strong>
+                    </p>
                   </div>
 
-                  <h3 className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                    <span>{kaseyaDevice ? (kaseyaDevice.Name || kaseyaDevice.hostname) : `${ticket.requester?.name || 'User'}'s PC`}</span>
-                    <span className="text-xs font-normal text-slate-300">
-                      ({ticket.requester?.name || 'Requester'} • {ticket.requester?.email || 'user@company.com'})
-                    </span>
-                  </h3>
+                  {/* 1-Click Action Buttons for Requester's PC */}
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <Button
+                      onClick={() => handleConnectKaseya(kaseyaDevice)}
+                      disabled={connectingKaseya}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-3.5 shadow-md flex items-center gap-2"
+                      title={`Connect to ${kaseyaDevice?.Name || 'PC'} using Kaseya VSA X Live Connect`}
+                    >
+                      {connectingKaseya ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}
+                      <span>Connect via Kaseya</span>
+                    </Button>
 
-                  <p className="text-xs text-slate-300">
-                    OS: <strong className="text-white">{kaseyaDevice?.os || 'Windows 11'}</strong> • IP: <strong className="text-white">{kaseyaDevice?.ipAddress || 'Active Dynamic IP'}</strong> • Status: <strong className="text-emerald-400">Online</strong>
-                  </p>
+                    <Button
+                      onClick={handleStartZohoAssist}
+                      disabled={startingAssist}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-3.5 shadow-md flex items-center gap-2"
+                      title="Generate instant Zoho Assist remote support session for this user"
+                    >
+                      {startingAssist ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
+                      <span>Connect via Zoho Assist</span>
+                    </Button>
+                  </div>
                 </div>
 
-                {/* 1-Click Action Buttons for Requester's PC */}
-                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                  <Button
-                    onClick={() => handleConnectKaseya(kaseyaDevice)}
-                    disabled={connectingKaseya}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-3.5 shadow-md flex items-center gap-2"
-                    title={`Connect to ${kaseyaDevice?.Name || 'PC'} using Kaseya VSA X Live Connect`}
-                  >
-                    {connectingKaseya ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}
-                    <span>Connect via Kaseya</span>
-                  </Button>
-
-                  <Button
-                    onClick={handleStartZohoAssist}
-                    disabled={startingAssist}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-3.5 shadow-md flex items-center gap-2"
-                    title="Generate instant Zoho Assist remote support session for this user"
-                  >
-                    {startingAssist ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
-                    <span>Connect via Zoho Assist</span>
-                  </Button>
-                </div>
+                {/* If Zoho Assist session was created, show 1-click customer join link banner */}
+                {assistSession && (
+                  <div className="mt-3.5 pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-700/50">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-indigo-300 flex items-center gap-1.5">
+                        <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                        Zoho Assist Session #{assistSession.sessionId} Ready:
+                      </span>
+                      <code className="bg-slate-900 px-2 py-0.5 rounded text-[11px] text-emerald-300 font-mono select-all">
+                        {assistSession.customerUrl}
+                      </code>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard.writeText(assistSession.customerUrl)
+                          toast.success('Zoho Assist Customer link copied!')
+                        }}
+                        className="h-7 text-[11px] bg-slate-900 border-indigo-500 text-indigo-200 hover:bg-indigo-900"
+                      >
+                        Copy Link
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setReplyContent(prev => `${prev}\n\nPlease join our remote support session using this link: ${assistSession.customerUrl}`.trim())
+                          openComposer('PUBLIC_REPLY')
+                        }}
+                        className="h-7 text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                      >
+                        Insert in Reply
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* If Zoho Assist session was created, show 1-click customer join link banner */}
-              {assistSession && (
-                <div className="mt-3.5 pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-700/50">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-indigo-300 flex items-center gap-1.5">
-                      <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-                      Zoho Assist Session #{assistSession.sessionId} Ready:
-                    </span>
-                    <code className="bg-slate-900 px-2 py-0.5 rounded text-[11px] text-emerald-300 font-mono select-all">
-                      {assistSession.customerUrl}
-                    </code>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(assistSession.customerUrl)
-                        toast.success('Zoho Assist Customer link copied!')
-                      }}
-                      className="h-7 text-[11px] bg-slate-900 border-indigo-500 text-indigo-200 hover:bg-indigo-900"
-                    >
-                      Copy Link
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setReplyContent(prev => `${prev}\n\nPlease join our remote support session using this link: ${assistSession.customerUrl}`.trim())
-                        openComposer('PUBLIC_REPLY')
-                      }}
-                      className="h-7 text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-                    >
-                      Insert in Reply
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
 
             {/* TAB: CONVERSATIONS */}
             {activeTab === 'conversations' && (
@@ -1259,35 +1283,39 @@ export function TicketWorkspace({
                           <span>AI Draft</span>
                         </Button>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          onClick={() => {
-                            const link = assistSession?.customerUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(ticket.requester?.email || ticket.customer?.email || '')}`
-                            setReplyContent(prev => `${prev}\n\nPlease join our remote support session using this secure link: ${link}`.trim())
-                          }}
-                          className="h-8 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50"
-                          title="Insert Zoho Assist Remote Support Link into response"
-                        >
-                          <Radio className="w-3.5 h-3.5 mr-1 text-indigo-600" />
-                          <span>+ Zoho Assist</span>
-                        </Button>
+                        {ticket.zohoTicketId && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              onClick={() => {
+                                const link = assistSession?.customerUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(ticket.requester?.email || ticket.customer?.email || '')}`
+                                setReplyContent(prev => `${prev}\n\nPlease join our remote support session using this secure link: ${link}`.trim())
+                              }}
+                              className="h-8 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50"
+                              title="Insert Zoho Assist Remote Support Link into response"
+                            >
+                              <Radio className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                              <span>+ Zoho Assist</span>
+                            </Button>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          onClick={() => {
-                            const host = kaseyaDevice?.hostname || kaseyaDevice?.Name || 'Workstation'
-                            setReplyContent(prev => `${prev}\n\n[Endpoint Diagnostics: Connected to ${host} via Kaseya VSA X Agent. Remote control session ready.]`.trim())
-                          }}
-                          className="h-8 text-xs text-blue-700 border-blue-200 bg-blue-50/40 hover:bg-blue-50"
-                          title="Insert Kaseya Endpoint Diagnostics info into response"
-                        >
-                          <Monitor className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                          <span>+ Kaseya Info</span>
-                        </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              onClick={() => {
+                                const host = kaseyaDevice?.hostname || kaseyaDevice?.Name || 'Workstation'
+                                setReplyContent(prev => `${prev}\n\n[Endpoint Diagnostics: Connected to ${host} via Kaseya VSA X Agent. Remote control session ready.]`.trim())
+                              }}
+                              className="h-8 text-xs text-blue-700 border-blue-200 bg-blue-50/40 hover:bg-blue-50"
+                              title="Insert Kaseya Endpoint Diagnostics info into response"
+                            >
+                              <Monitor className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                              <span>+ Kaseya Info</span>
+                            </Button>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1526,7 +1554,7 @@ export function TicketWorkspace({
                           >
                             <a
                               href={kaseyaDevice?.remoteSupportUrl || `https://parletechnologies.vsax.net/devices/${kaseyaDevice?.Identifier || kaseyaDevice?.hostname}`}
-                              target="_self"
+                              target="_blank"
                               rel="noreferrer"
                             >
                               <ExternalLink className="w-3.5 h-3.5 mr-1 text-blue-600" />
@@ -1635,7 +1663,7 @@ export function TicketWorkspace({
                             size="sm"
                             className="h-8 text-xs border-slate-300 text-slate-800 hover:bg-slate-100"
                           >
-                            <a href="https://parletechnologies.vsax.net/devices" target="_self" rel="noreferrer">
+                            <a href="https://parletechnologies.vsax.net/devices" target="_blank" rel="noreferrer">
                               <ExternalLink className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
                               <span>Open VSA X Portal</span>
                             </a>
@@ -1913,82 +1941,84 @@ export function TicketWorkspace({
           {/* Right Column: Ticket Properties & Kaseya Endpoint Widget */}
           {showSidePanel && (
             <aside className="lg:col-span-4 xl:col-span-3 space-y-5">
-              {/* KASEYA VSA ENDPOINT WIDGET */}
-              <Card className="border-blue-200 shadow-xs bg-gradient-to-b from-blue-50/40 via-white to-white">
-                <CardHeader className="py-3 px-4 border-b border-blue-100 flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-blue-600 text-white rounded-md">
-                      <Monitor className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-xs font-bold text-slate-900">Kaseya VSA Endpoint</CardTitle>
-                      <CardDescription className="text-[10px] text-slate-500">Live RMM Integration</CardDescription>
-                    </div>
-                  </div>
-                  {kaseyaDevice ? (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Online
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                      HTTP {liveApiStatus?.httpStatus || 403}
-                    </span>
-                  )}
-                </CardHeader>
-                <CardContent className="p-4 space-y-3 text-xs">
-                  {kaseyaDevice ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500">Device Name:</span>
-                        <span className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                          {kaseyaDevice.hostname || kaseyaDevice.Name}
-                        </span>
+              {/* KASEYA VSA ENDPOINT WIDGET (Zoho tickets only) */}
+              {ticket.zohoTicketId && (
+                <Card className="border-blue-200 shadow-xs bg-gradient-to-b from-blue-50/40 via-white to-white">
+                  <CardHeader className="py-3 px-4 border-b border-blue-100 flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-blue-600 text-white rounded-md">
+                        <Monitor className="w-3.5 h-3.5" />
                       </div>
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-slate-500">User:</span>
-                        <span className="font-medium text-slate-800">{kaseyaDevice.assignedUserName || ticket.requester?.name}</span>
+                      <div>
+                        <CardTitle className="text-xs font-bold text-slate-900">Kaseya VSA Endpoint</CardTitle>
+                        <CardDescription className="text-[10px] text-slate-500">Live RMM Integration</CardDescription>
                       </div>
-                      <Button
-                        onClick={handleConnectKaseya}
-                        className="w-full bg-[#1A73E8] hover:bg-[#1557b0] text-white font-bold text-xs h-8.5 mt-2"
-                      >
-                        Connect via Live Connect
-                      </Button>
                     </div>
-                  ) : (
-                    <div className="space-y-2 text-[11px] text-slate-600">
-                      <div className="p-2 rounded bg-blue-50 border border-blue-200 text-blue-900">
-                        <p className="font-semibold">Kaseya VSA X: 95 Active Endpoints</p>
-                        <p className="text-[10px] mt-0.5 text-blue-800">
-                          Connected to https://parletechnologies.vsax.net. Select an endpoint from the Kaseya VSA tab to connect.
-                        </p>
+                    {kaseyaDevice ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Online
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                        HTTP {liveApiStatus?.httpStatus || 403}
+                      </span>
+                    )}
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3 text-xs">
+                    {kaseyaDevice ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500">Device Name:</span>
+                          <span className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            {kaseyaDevice.hostname || kaseyaDevice.Name}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-slate-500">User:</span>
+                          <span className="font-medium text-slate-800">{kaseyaDevice.assignedUserName || ticket.requester?.name}</span>
+                        </div>
+                        <Button
+                          onClick={handleConnectKaseya}
+                          className="w-full bg-[#1A73E8] hover:bg-[#1557b0] text-white font-bold text-xs h-8.5 mt-2"
+                        >
+                          Connect via Live Connect
+                        </Button>
                       </div>
-                      <Button
-                        onClick={handleTestKaseyaConnection}
-                        disabled={testingKaseya}
-                        size="sm"
-                        variant="outline"
-                        className="w-full h-8 text-xs border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${testingKaseya ? 'animate-spin' : ''}`} />
-                        <span>Test Live Connection</span>
-                      </Button>
-                      <Button
-                        asChild
-                        size="sm"
-                        variant="ghost"
-                        className="w-full h-8 text-xs text-slate-600 hover:text-slate-900"
-                      >
-                        <a href="https://parletechnologies.vsax.net/devices" target="_self" rel="noreferrer">
-                          <ExternalLink className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                          <span>Open VSA X Devices Portal</span>
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    ) : (
+                      <div className="space-y-2 text-[11px] text-slate-600">
+                        <div className="p-2 rounded bg-blue-50 border border-blue-200 text-blue-900">
+                          <p className="font-semibold">Kaseya VSA X: 95 Active Endpoints</p>
+                          <p className="text-[10px] mt-0.5 text-blue-800">
+                            Connected to https://parletechnologies.vsax.net. Select an endpoint from the Kaseya VSA tab to connect.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={handleTestKaseyaConnection}
+                          disabled={testingKaseya}
+                          size="sm"
+                          variant="outline"
+                          className="w-full h-8 text-xs border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${testingKaseya ? 'animate-spin' : ''}`} />
+                          <span>Test Live Connection</span>
+                        </Button>
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          className="w-full h-8 text-xs text-slate-600 hover:text-slate-900"
+                        >
+                          <a href="https://parletechnologies.vsax.net/devices" target="_blank" rel="noreferrer">
+                            <ExternalLink className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                            <span>Open VSA X Devices Portal</span>
+                          </a>
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Ticket Properties Card */}
               <Card className="border-slate-200 shadow-xs bg-white">
@@ -2247,7 +2277,7 @@ export function TicketWorkspace({
                   </div>
                 </div>
                 <Button
-                  onClick={() => { window.location.href = assistSession.technicianUrl }}
+                  onClick={() => window.open(assistSession.technicianUrl, '_blank', 'noopener,noreferrer,width=1280,height=800')}
                   className="w-full h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
                 >
                   Launch Technician Session Viewer

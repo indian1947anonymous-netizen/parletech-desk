@@ -116,7 +116,8 @@ export function agentReplyEmail(params: {
         <p style="margin: 0 0 20px; font-size: 14px; color: #64748b;"><strong>${params.agentName}</strong> has responded to your ticket:</p>
         <div style="background: #f8fafc; border-left: 4px solid #2563eb; padding: 18px; margin: 0 0 24px; border-radius: 0 6px 6px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; color: #0f172a;">${params.replyContent}</div>
 
-        <!-- Remote Assistance & Endpoint Box -->
+        ${params.zohoAssistUrl ? `
+        <!-- Remote Assistance & Endpoint Box (Zoho Desk tickets only) -->
         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <h4 style="margin: 0 0 6px; font-size: 14px; color: #166534; font-weight: 700;">
             🖥️ Remote Technical Support (Zoho Assist & Kaseya VSA)
@@ -128,10 +129,9 @@ export function agentReplyEmail(params: {
              style="display: inline-block; background: #16a34a; color: #ffffff; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 6px; text-decoration: none;">
             Join Zoho Assist Remote Session
           </a>
-          <span style="display: block; margin-top: 8px; font-size: 11px; color: #166534; font-family: monospace;">
-            ${endpointInfo}
-          </span>
+          ${endpointInfo ? `<span style="display: block; margin-top: 8px; font-size: 11px; color: #166534; font-family: monospace;">${endpointInfo}</span>` : ''}
         </div>
+        ` : ''}
 
         <div style="margin: 24px 0 20px;">
           <a href="${params.appUrl}/tickets/${params.ticketNumber}" 

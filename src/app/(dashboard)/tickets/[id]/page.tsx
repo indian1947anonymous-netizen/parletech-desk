@@ -181,8 +181,10 @@ export default async function TicketDetailPage({ params }: PageProps) {
   if (!m365Account && m365Found) m365Account = m365Found
   if (!snipeAsset && snipeFound) snipeAsset = snipeFound
 
-  // Match Kaseya device: by assigned email, name, or Adam's workstation
-  if (!kaseyaDevice && allKaseyaDevices.length > 0) {
+  const isZohoTicket = !!ticket.zohoTicketId
+
+  // Match Kaseya device: ONLY for Zoho Desk tickets (Gmail tickets do not have Kaseya or Zoho Assist)
+  if (isZohoTicket && !kaseyaDevice && allKaseyaDevices.length > 0) {
     kaseyaDevice = allKaseyaDevices.find((d: any) =>
       (requesterEmail && d.assignedUserEmail && d.assignedUserEmail.toLowerCase() === requesterEmail) ||
       (requesterName && d.assignedUserName && d.assignedUserName.toLowerCase().includes(requesterName.toLowerCase())) ||
@@ -191,7 +193,7 @@ export default async function TicketDetailPage({ params }: PageProps) {
     ) || allKaseyaDevices.find((d: any) => d.hostname === 'BL-W11-EXEC01') || allKaseyaDevices[0]
   }
 
-  if (kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
+  if (isZohoTicket && kaseyaDevice && !kaseyaDevice.zohoAssistUrl) {
     kaseyaDevice.zohoAssistUrl = `https://assist.zoho.com/app/agent?email=${encodeURIComponent(requesterEmail || 'user@company.com')}`
   }
 

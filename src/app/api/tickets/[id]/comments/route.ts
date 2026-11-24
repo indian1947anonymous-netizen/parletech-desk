@@ -76,19 +76,24 @@ export async function POST(
     const gmailAccount = process.env.GMAIL_EMAIL || process.env.SMTP_USER || 'Indian1947anonymous@gmail.com'
 
     if (data.type === 'PUBLIC_REPLY' && recipientEmail) {
-      // Find linked Kaseya device for telemetry in email
-      const kaseyaDev = await prisma.kaseyaDevice.findFirst({
-        where: {
-          OR: [
-            ...(recipientEmail ? [{ assignedUserEmail: { equals: recipientEmail, mode: 'insensitive' as const } }] : []),
-            { hostname: ticket.deviceHostname || 'BL-W11-EXEC01' },
-            { assignedUserName: { contains: recipientName, mode: 'insensitive' as const } }
-          ]
-        }
-      })
+      // ONLY Zoho Desk tickets have Kaseya device and Zoho Assist
+      const isZohoTicket = !!ticket.zohoTicketId
+      let zohoAssistUrl: string | undefined = undefined
+      let deviceHostname: string | undefined = undefined
 
-      const zohoAssistUrl = (ticket.kaseyaData as any)?.zohoAssistUrl || `https://assist.zoho.com/app/agent?email=${encodeURIComponent(recipientEmail)}`
-      const deviceHostname = ticket.deviceHostname || kaseyaDev?.hostname || 'BL-W11-EXEC01'
+      if (isZohoTicket) {
+        const kaseyaDev = await prisma.kaseyaDevice.findFirst({
+          where: {
+            OR: [
+              ...(recipientEmail ? [{ assignedUserEmail: { equals: recipientEmail, mode: 'insensitive' as const } }] : []),
+              ...(ticket.deviceHostname ? [{ hostname: ticket.deviceHostname }] : []),
+              { assignedUserName: { contains: recipientName, mode: 'insensitive' as const } }
+            ]
+          }
+        })
+        zohoAssistUrl = (ticket.kaseyaData as any)?.zohoAssistUrl || (kaseyaDev ? `https://assist.zoho.com/app/agent?email=${encodeURIComponent(recipientEmail)}` : undefined)
+        deviceHostname = ticket.deviceHostname || kaseyaDev?.hostname || undefined
+      }
 
       const email = newReplyEmail({
         ticketNumber: ticket.ticketNumber,
