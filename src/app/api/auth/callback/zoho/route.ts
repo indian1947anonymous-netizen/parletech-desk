@@ -26,8 +26,12 @@ export async function GET(req: NextRequest) {
     const map: Record<string, string> = {}
     settings.forEach(s => { map[s.key] = s.value })
 
-    const clientId = map['ZOHO_DESK_CLIENT_ID'] || process.env.ZOHO_CLIENT_ID || '1000.HX5ZT5LFJFCD5Y9PUDQMUNJUQI4NCB'
-    const clientSecret = map['ZOHO_DESK_CLIENT_SECRET'] || process.env.ZOHO_CLIENT_SECRET || '1f39a35fbd80465510148eee01ea523f0ae5707e4d'
+    const clientId = map['ZOHO_DESK_CLIENT_ID'] || process.env.ZOHO_CLIENT_ID || ''
+    const clientSecret = map['ZOHO_DESK_CLIENT_SECRET'] || process.env.ZOHO_CLIENT_SECRET || ''
+
+    if (!clientId || !clientSecret) {
+      return NextResponse.redirect(new URL('/settings/integrations?zoho_error=Missing+Zoho+OAuth+Credentials', req.url))
+    }
 
     const redirectUri = `${url.origin}/api/auth/callback/zoho`
 

@@ -29,13 +29,13 @@ services:
       - key: SMTP_USER
         value: Indian1947anonymous@gmail.com
       - key: SMTP_PASSWORD
-        value: uulqzjqhfzugvunk
+        sync: false
       - key: SMTP_FROM
         value: "ParleTech Desk <Indian1947anonymous@gmail.com>"
       - key: GMAIL_EMAIL
         value: Indian1947anonymous@gmail.com
       - key: GMAIL_APP_PASSWORD
-        value: uulqzjqhfzugvunk
+        sync: false
 
 databases:
   - name: parletech-db

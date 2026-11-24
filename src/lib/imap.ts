@@ -13,7 +13,7 @@ interface ImapConfig {
 
 export async function getImapConfig(): Promise<ImapConfig | null> {
   const user = process.env.GMAIL_EMAIL || process.env.IMAP_USER || 'Indian1947anonymous@gmail.com'
-  const pass = process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || 'uulqzjqhfzugvunk'
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.IMAP_PASSWORD || process.env.SMTP_PASSWORD || ''
 
   if (!user || !pass) {
     return null

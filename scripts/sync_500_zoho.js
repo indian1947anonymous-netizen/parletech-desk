@@ -28,11 +28,11 @@ async function sync500ZohoTickets() {
 
   // Step 2: Acquire fresh OAuth 2.0 access token
   console.log('\n[2/6] Refreshing Zoho Desk OAuth 2.0 Token...');
-  const orgId = '787180614';
-  const domain = 'https://desk.zoho.com';
-  const refreshToken = '1000.6a63465b1e389c33b8eeb12bfa3df43a.5146cfe5e4ccadbb629dd1f0abd2cdba';
-  const clientId = '1000.Q12YH5U5SM8TF135IH7NCVDR4418FC';
-  const clientSecret = '7bf2bd0984c894d53d520ea3585d3cb5bf4b6904f5';
+  const orgId = process.env.ZOHO_ORG_ID || '787180614';
+  const domain = process.env.ZOHO_DOMAIN || 'https://desk.zoho.com';
+  const refreshToken = process.env.ZOHO_REFRESH_TOKEN || '';
+  const clientId = process.env.ZOHO_CLIENT_ID || '';
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET || '';
 
   const tokenParams = new URLSearchParams({
     refresh_token: refreshToken,

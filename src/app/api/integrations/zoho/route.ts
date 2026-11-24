@@ -65,8 +65,12 @@ export async function POST(req: NextRequest) {
       }
 
       const raw = await zohoDeskService.getRawCredentials()
-      const clientId = raw.clientId || '1000.Q12YH5U5SM8TF135IH7NCVDR4418FC'
-      const clientSecret = raw.clientSecret || '7bf2bd0984c894d53d520ea3585d3cb5bf4b6904f5'
+      const clientId = raw.clientId || process.env.ZOHO_CLIENT_ID || ''
+      const clientSecret = raw.clientSecret || process.env.ZOHO_CLIENT_SECRET || ''
+
+      if (!clientId || !clientSecret) {
+        return NextResponse.json({ error: 'Zoho Desk Client ID and Secret are not configured in settings or environment variables.' }, { status: 400 })
+      }
 
       const candidateAccounts = [
         'https://accounts.zoho.com',
